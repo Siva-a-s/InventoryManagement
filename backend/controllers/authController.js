@@ -80,7 +80,7 @@ exports.deleteStaff = async (req, res) => {
   res.json({ message: 'Staff removed' });
 };
 
-exports.getMe = async (req, res) => {
-  const user = await User.findById(req.user.id).select('-password');
-  res.json(user);
-};
+// exports.getMe = async (req, res) => {
+//   const user = await User.findById(req.user.id).select('-password');
+//   res.json(user);
+// };

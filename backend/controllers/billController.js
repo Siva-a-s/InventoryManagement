@@ -387,6 +387,7 @@ exports.cancelBill = async (req, res) => {
     session.endSession();
   }
 };
+
 // GET /api/bills/summary?from=2026-09-01&to=2026-09-30   (owner only)
 exports.getSalesSummary = async (req, res) => {
   try {

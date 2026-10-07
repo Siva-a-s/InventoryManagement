@@ -42,15 +42,15 @@ exports.getProducts = async (req, res) => {
   }
 };
 
-exports.getProductById = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id).populate("category", "name");
-    if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
+// exports.getProductById = async (req, res) => {
+//   try {
+//     const product = await Product.findById(req.params.id).populate("category", "name");
+//     if (!product) return res.status(404).json({ message: "Product not found" });
+//     res.json(product);
+//   } catch (err) {
+//     res.status(500).json({ message: err.message });
+//   }
+// };
 
 // @desc Update product (Owner only)
 exports.updateProduct = async (req, res) => {

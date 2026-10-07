@@ -284,16 +284,58 @@ exports.receivePurchaseOrder = async (req, res) => {
       });
     }
 
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length !== order.items.length) {
+      return res.status(400).json({
+        message: 'Please provide receiving details for all items'
+      });
+    }
+
     // Create stock batch for every item
     for (const item of order.items) {
+      const receivedItem = items.find(
+        (received) =>
+          received.itemId.toString() === item._id.toString()
+      );
+
+      if (!receivedItem) {
+        return res.status(400).json({
+          message: 'Receiving details missing for an item'
+        });
+      }
+
+      if (
+        !receivedItem.receivedQuantity ||
+        Number(receivedItem.receivedQuantity) <= 0
+      ) {
+        return res.status(400).json({
+          message: 'Received quantity must be greater than 0'
+        });
+      }
+
+      if (!receivedItem.batchNumber) {
+        return res.status(400).json({
+          message: 'Batch number is required'
+        });
+      }
+
+      if (!receivedItem.expiryDate) {
+        return res.status(400).json({
+          message: 'Expiry date is required'
+        });
+      }
+
       const batch = await StockBatch.create(
         [
           {
             product: item.product,
             supplier: order.supplier,
-            quantity: item.quantity,
+            quantity: Number(receivedItem.receivedQuantity),
             costPrice: item.unitCost,
-            expiryDate: item.expiryDate,
+            batchNumber: receivedItem.batchNumber,
+            expiryDate: receivedItem.expiryDate,
+            purchaseDate: new Date(),
             sourceType: 'purchase_order',
             purchaseOrder: order._id,
             receivedBy: req.user._id,

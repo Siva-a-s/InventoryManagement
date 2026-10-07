@@ -98,19 +98,19 @@ exports.getSuppliers = async (req, res) => {
   }
 };
 
-// GET /api/suppliers/:id   (owner, staff)
-exports.getSupplierById = async (req, res) => {
-  try {
-    if (!isValidId(req.params.id)) fail(400, 'Invalid supplier id');
+// // GET /api/suppliers/:id   (owner, staff)
+// exports.getSupplierById = async (req, res) => {
+//   try {
+//     if (!isValidId(req.params.id)) fail(400, 'Invalid supplier id');
 
-    const supplier = await Supplier.findById(req.params.id).populate('products', 'name unit barcode');
-    if (!supplier) fail(404, 'Supplier not found');
+//     const supplier = await Supplier.findById(req.params.id).populate('products', 'name unit barcode');
+//     if (!supplier) fail(404, 'Supplier not found');
 
-    res.json(supplier);
-  } catch (err) {
-    handleError(res, err);
-  }
-};
+//     res.json(supplier);
+//   } catch (err) {
+//     handleError(res, err);
+//   }
+// };
 
 // PUT /api/suppliers/:id   (owner only)
 // products, if sent, REPLACES the whole list of supplied products

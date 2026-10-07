@@ -14,7 +14,7 @@ const {
 
 // owner + staff can view (staff need the list for the stock-entry dropdown)
 router.get('/', protect, authorize('owner', 'staff'), getSuppliers);
-router.get('/:id', protect, authorize('owner', 'staff'), getSupplierById);
+// router.get('/:id', protect, authorize('owner', 'staff'), getSupplierById);
 
 // only the owner can change suppliers
 router.post('/', protect, authorize('owner'), createSupplier);

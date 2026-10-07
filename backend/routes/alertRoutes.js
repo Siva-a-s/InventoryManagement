@@ -13,7 +13,7 @@ const {
 } = require('../controllers/alertController');
 
 router.use(protect);
-router.use(authorize('owner'));
+router.use(authorize('owner','staff'));
 
 router.get('/', getAlerts);
 

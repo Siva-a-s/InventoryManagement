@@ -21,11 +21,11 @@ router.use(protect); // must be logged in for everything below
 
 // Owner + Staff/Cashier: stock-in and viewing
 router.post('/', authorize('owner', 'staff'), addBatch);
-router.post('/bulk', authorize('owner', 'staff'), addBulk);
+// router.post('/bulk', authorize('owner', 'staff'), addBulk);
 router.get('/', authorize('owner', 'staff'), getBatches);
-router.get('/summary', authorize('owner', 'staff'), getStockSummary);
+// router.get('/summary', authorize('owner', 'staff'), getStockSummary);
 router.get('/product/:productId', authorize('owner', 'staff'), getProductStock);
-router.get('/history', authorize('owner', 'staff'), getPurchaseHistory);
+// router.get('/history', authorize('owner', 'staff'), getPurchaseHistory);
 router.get('/:id', authorize('owner', 'staff'), getBatch);
 
 // Owner only: corrections and deletion
