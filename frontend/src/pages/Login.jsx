@@ -25,6 +25,7 @@ const Login = () => {
       console.log('Login response:', response.data)
 
       localStorage.setItem('token', response.data.token)
+localStorage.setItem('role', response.data.user.role)
 
       navigate('/dashboard')
 

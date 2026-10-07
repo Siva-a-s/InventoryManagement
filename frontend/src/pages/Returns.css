@@ -1,0 +1,284 @@
+.returns-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.returns-header {
+  margin-bottom: 25px;
+}
+
+.returns-header h1 {
+  margin-bottom: 5px;
+}
+
+.returns-header p {
+  color: #6b7280;
+}
+
+.return-card {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.return-card h3 {
+  margin-top: 0;
+}
+
+.bill-search {
+  display: flex;
+  gap: 10px;
+}
+
+.bill-search input {
+  flex: 1;
+  padding: 11px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.bill-search button {
+  padding: 11px 22px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.bill-info {
+  display: flex;
+  gap: 50px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.bill-info div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bill-info span {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.return-item {
+  padding: 16px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.return-product {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.return-product span {
+  color: #6b7280;
+}
+
+.return-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.return-controls input[type="number"],
+.return-controls select {
+  padding: 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.return-controls input[type="number"] {
+  width: 80px;
+}
+
+.restock-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.return-details {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+.return-details div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.return-details input,
+.return-details select {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.process-return {
+  width: 100%;
+  margin-top: 25px;
+  padding: 13px;
+  border: none;
+  border-radius: 7px;
+  background: #16a34a;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.process-return:hover {
+  background: #15803d;
+}
+.bills-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.bills-table th,
+.bills-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.select-bill-button {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 5px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.select-bill-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.status-badge,
+.selected-status {
+  background: #dcfce7;
+  color: #166534;
+  padding: 5px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.selected-bill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.selected-bill-header h3 {
+  margin-bottom: 5px;
+}
+
+.selected-bill-header p {
+  color: #6b7280;
+  margin: 0;
+}
+.bills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 15px;
+}
+
+.bills-header h3 {
+  margin-bottom: 5px;
+}
+
+.bills-header p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.bill-search-input {
+  width: 280px;
+  padding: 11px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.bill-search-input:focus {
+  border-color: #2563eb;
+}
+/* Bill scroll area */
+
+.bills-scroll-container {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+/* Keep table header visible while scrolling */
+
+.bills-scroll-container .bills-table {
+  margin: 0;
+}
+
+.bills-scroll-container .bills-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f9fafb;
+}
+
+/* Scrollbar */
+
+.bills-scroll-container::-webkit-scrollbar {
+  width: 7px;
+}
+
+.bills-scroll-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.bills-scroll-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.bills-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Scroll hint */
+
+.bill-scroll-hint {
+  text-align: center;
+  padding: 9px;
+  color: #6b7280;
+  font-size: 12px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Empty bills */
+
+.no-bills {
+  padding: 35px;
+  text-align: center;
+  color: #6b7280;
+}

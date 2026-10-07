@@ -1,0 +1,144 @@
+.alerts-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.alerts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.alerts-header h1 {
+  margin-bottom: 5px;
+}
+
+.alerts-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.refresh-button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.refresh-button:hover {
+  background: #1d4ed8;
+}
+
+.alerts-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.alert-summary-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.alert-summary-card span {
+  display: block;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.alert-summary-card strong {
+  font-size: 26px;
+}
+
+.alerts-card {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.alerts-card h3 {
+  margin-top: 0;
+}
+
+.alerts-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.alerts-table th,
+.alerts-table td {
+  padding: 13px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.alert-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.alert-badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.alert-badge.expiry {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.alert-badge.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.action-text {
+  color: #2563eb;
+  font-size: 14px;
+}
+
+.danger-text {
+  color: #dc2626;
+}
+
+.no-alerts {
+  text-align: center;
+  padding: 50px 20px;
+}
+
+.no-alerts h3 {
+  color: #16a34a;
+  margin-bottom: 8px;
+}
+
+.no-alerts p {
+  color: #6b7280;
+}
+
+@media (max-width: 900px) {
+  .alerts-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .alerts-header {
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .alerts-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

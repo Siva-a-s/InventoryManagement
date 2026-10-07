@@ -17,6 +17,7 @@ const Products = () => {
   const [barcode, setBarcode] = useState('')
   const [reorderLevel, setReorderLevel] = useState(10)
   const [expiryAlertDays, setExpiryAlertDays] = useState(30)
+  const [searchProduct, setSearchProduct] = useState('')
 
   const fetchProducts = async () => {
     try {
@@ -202,6 +203,12 @@ const handleDeleteProduct = async (productId) => {
   }
 }
 
+const filteredProducts = products.filter((product) =>
+  product.name?.toLowerCase().includes(searchProduct.toLowerCase()) ||
+  product.barcode?.toLowerCase().includes(searchProduct.toLowerCase()) ||
+  product.category?.name?.toLowerCase().includes(searchProduct.toLowerCase())
+)
+
  return (
   <Layout>
 
@@ -341,11 +348,24 @@ const handleDeleteProduct = async (productId) => {
         </form>
       )}
 
-      <div className="product-list-card">
+<div className="product-list-card">
 
-        <h2>Product List</h2>
+  <div className="product-list-header">
+    <div>
+      <h2>Product List</h2>
+      <p>Search and manage your products</p>
+    </div>
 
-        <table className="products-table">
+    <input
+      type="text"
+      className="product-search-input"
+      placeholder="Search product or barcode..."
+      value={searchProduct}
+      onChange={(e) => setSearchProduct(e.target.value)}
+    />
+  </div>
+
+  <table className="products-table">
 
           <thead>
             <tr>
@@ -361,8 +381,7 @@ const handleDeleteProduct = async (productId) => {
           </thead>
 
           <tbody>
-
-            {products.map((product) => (
+{filteredProducts.map((product) =>  (
               <tr key={product._id}>
 
                 <td>{product.name}</td>

@@ -1,0 +1,147 @@
+.wastage-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.wastage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.wastage-header h1 {
+  margin-bottom: 5px;
+}
+
+.wastage-header p {
+  color: #6b7280;
+  margin: 0;
+}
+
+.expired-button {
+  padding: 11px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #dc2626;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.expired-button:hover {
+  background: #b91c1c;
+}
+
+.wastage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.summary-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.summary-card span {
+  display: block;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.summary-card strong {
+  font-size: 24px;
+}
+
+.wastage-card {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.wastage-card h3 {
+  margin-top: 0;
+}
+
+.wastage-form {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1.5fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.wastage-form div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wastage-form label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wastage-form input,
+.wastage-form select {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.record-button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #16a34a;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.record-button:hover {
+  background: #15803d;
+}
+
+.wastage-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.wastage-table th,
+.wastage-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.reason-badge {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 5px 9px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+@media (max-width: 900px) {
+  .wastage-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wastage-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .wastage-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+}

@@ -1,0 +1,144 @@
+.reports-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.reports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.reports-header h1 {
+  margin-bottom: 5px;
+}
+
+.reports-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.refresh-report-button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.refresh-report-button:hover {
+  background: #1d4ed8;
+}
+
+/* Main summary */
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 25px;
+}
+
+.report-card {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.report-card span {
+  display: block;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.report-card strong {
+  font-size: 25px;
+}
+
+/* Sections */
+
+.report-section {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.report-section h3 {
+  margin-top: 0;
+  margin-bottom: 18px;
+}
+
+/* Payment */
+
+.payment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+.payment-card {
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.payment-card span {
+  display: block;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.payment-card strong {
+  font-size: 21px;
+}
+
+/* Tables */
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-table th,
+.report-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.report-table th {
+  background: #f9fafb;
+}
+
+.empty-report {
+  color: #6b7280;
+  padding: 15px 0;
+}
+
+/* Responsive */
+
+@media (max-width: 900px) {
+  .report-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .payment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-header {
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .report-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

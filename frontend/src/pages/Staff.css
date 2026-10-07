@@ -1,0 +1,122 @@
+.staff-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.staff-header {
+  margin-bottom: 25px;
+}
+
+.staff-header h1 {
+  margin-bottom: 5px;
+}
+
+.staff-header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.staff-card {
+  background: white;
+  padding: 22px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
+.staff-card h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.staff-form {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr auto;
+  gap: 15px;
+  align-items: end;
+}
+
+.staff-form div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-form label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.staff-form input {
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  outline: none;
+}
+
+.staff-form input:focus {
+  border-color: #2563eb;
+}
+
+.add-staff-button {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #16a34a;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.add-staff-button:hover {
+  background: #15803d;
+}
+
+.staff-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.staff-table th,
+.staff-table td {
+  padding: 13px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.staff-table th {
+  background: #f9fafb;
+}
+
+.role-badge {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.delete-staff-button {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 5px;
+  background: #dc2626;
+  color: white;
+  cursor: pointer;
+}
+
+.delete-staff-button:hover {
+  background: #b91c1c;
+}
+
+@media (max-width: 900px) {
+  .staff-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .staff-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
