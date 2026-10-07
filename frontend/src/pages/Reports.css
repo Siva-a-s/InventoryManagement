@@ -3,20 +3,43 @@
   margin: 0 auto;
 }
 
+/* Header */
+
 .reports-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 20px;
   margin-bottom: 25px;
 }
 
 .reports-header h1 {
-  margin-bottom: 5px;
+  margin: 0 0 5px;
 }
 
 .reports-header p {
   margin: 0;
   color: #6b7280;
+}
+
+.report-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.report-controls select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.report-controls select:focus {
+  outline: none;
+  border-color: #2563eb;
 }
 
 .refresh-report-button {
@@ -33,32 +56,6 @@
   background: #1d4ed8;
 }
 
-/* Main summary */
-
-.report-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
-  margin-bottom: 25px;
-}
-
-.report-card {
-  background: white;
-  padding: 22px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.report-card span {
-  display: block;
-  color: #6b7280;
-  margin-bottom: 8px;
-}
-
-.report-card strong {
-  font-size: 25px;
-}
-
 /* Sections */
 
 .report-section {
@@ -69,36 +66,94 @@
   margin-bottom: 20px;
 }
 
-.report-section h3 {
-  margin-top: 0;
-  margin-bottom: 18px;
+.section-heading {
+  margin-bottom: 20px;
 }
 
-/* Payment */
+.section-heading h2 {
+  margin: 0 0 5px;
+  font-size: 20px;
+}
 
-.payment-grid {
+.section-heading p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Business Overview */
+
+.report-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
 }
 
-.payment-card {
-  padding: 18px;
+.report-card {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 9px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
 }
 
-.payment-card span {
+.report-card span {
   display: block;
   color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 9px;
+}
+
+.report-card strong {
+  font-size: 24px;
+  color: #111827;
+}
+
+.highlight-card {
+  border-left: 4px solid #2563eb;
+}
+
+.highlight-card strong {
+  color: #2563eb;
+}
+
+/* Business Health */
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+.health-card {
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: white;
+}
+
+.health-card span {
+  display: block;
+  color: #6b7280;
+  font-size: 14px;
   margin-bottom: 8px;
 }
 
-.payment-card strong {
-  font-size: 21px;
+.health-card strong {
+  display: block;
+  font-size: 23px;
+  margin-bottom: 8px;
+}
+
+.health-card small {
+  color: #6b7280;
+  line-height: 1.4;
 }
 
 /* Tables */
+
+.table-container {
+  overflow-x: auto;
+}
 
 .report-table {
   width: 100%;
@@ -107,12 +162,22 @@
 
 .report-table th,
 .report-table td {
-  padding: 12px;
+  padding: 13px 12px;
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .report-table th {
+  background: #f9fafb;
+  color: #374151;
+  font-size: 14px;
+}
+
+.report-table td {
+  font-size: 14px;
+}
+
+.report-table tbody tr:hover {
   background: #f9fafb;
 }
 
@@ -123,22 +188,102 @@
 
 /* Responsive */
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .report-summary {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .payment-grid {
+  .health-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .reports-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .report-controls {
+    width: 100%;
+  }
+
+  .report-controls select {
+    flex: 1;
+  }
+
+  .report-summary {
     grid-template-columns: 1fr;
   }
 
-  .reports-header {
-    align-items: flex-start;
-    gap: 15px;
+  .health-grid {
+    grid-template-columns: 1fr;
   }
 
-  .report-table {
-    display: block;
-    overflow-x: auto;
+  .report-section {
+    padding: 16px;
+  }
+}
+/* Product Performance */
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.performance-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  padding: 20px;
+}
+
+.performance-card h3 {
+  margin: 0 0 5px;
+}
+
+.performance-card > p {
+  margin: 0 0 18px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.performance-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.performance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.performance-row:last-child {
+  border-bottom: none;
+}
+
+.performance-row strong {
+  display: block;
+  font-size: 14px;
+}
+
+.performance-row small {
+  display: block;
+  margin-top: 4px;
+  color: #6b7280;
+}
+
+.performance-row > span {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .performance-grid {
+    grid-template-columns: 1fr;
   }
 }
