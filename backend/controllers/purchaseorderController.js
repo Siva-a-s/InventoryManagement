@@ -3,6 +3,8 @@ const PurchaseOrder = require('../models/Purchaseorder');
 const Supplier = require('../models/Supplier');
 const Product = require('../models/Product');
 const StockBatch = require('../models/StockBatch');
+const User = require('../models/User');
+const { sendEmail } = require('../services/emailService')
 
 // CREATE PURCHASE ORDER
 // This only creates the order.
@@ -358,6 +360,46 @@ exports.receivePurchaseOrder = async (req, res) => {
 
     await session.commitTransaction();
 
+const owner = await User.findOne({ role: 'owner' }).select('email name');
+const supplier = await Supplier.findById(order.supplier).select('name');
+
+if (owner?.email) {
+  const itemDetails = order.items
+    .map((item) => {
+      const receivedItem = items.find(
+        (received) =>
+          received.itemId.toString() === item._id.toString()
+      );
+
+      const receivedQuantity = receivedItem
+        ? Number(receivedItem.receivedQuantity)
+        : 0;
+
+      return `${item.product?.name || 'Product'} - Ordered: ${item.quantity}, Received: ${receivedQuantity}, Unit Cost: ₹${item.unitCost}`;
+    })
+    .join('\n');
+
+  await sendEmail(
+    owner.email,
+    `Purchase Order Received - ${order.poNumber}`,
+    `Hello ${owner.name || 'Owner'},
+
+Purchase Order ${order.poNumber} has been received successfully.
+
+Supplier: ${supplier?.name || 'Supplier'}
+Received Date: ${new Date().toLocaleDateString('en-IN')}
+
+Items:
+${itemDetails}
+
+Total PO Amount: ₹${Number(order.totalAmount || 0).toLocaleString('en-IN')}
+
+The received stock has been added to inventory.
+
+Thank you,
+Smart Inventory Management`
+  );
+}
     res.json({
       message: 'Purchase order received and stock added',
       order

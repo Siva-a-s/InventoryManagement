@@ -2,6 +2,8 @@ const Bill = require('../models/Bill');
 const Product = require('../models/Product');
 const Return = require('../models/Return');
 const Wastage = require('../models/Wastage');
+const StockBatch = require('../models/StockBatch');
+const PurchaseOrder = require('../models/Purchaseorder');
 
 const TIMEZONE = 'Asia/Kolkata';
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
@@ -222,7 +224,162 @@ async function getTopProducts(
   }));
 }
 
+async function getFastMovingProducts(
+  from,
+  to,
+  limit
+) {
+  const soldRows = await Bill.aggregate([
+    {
+      $match: {
+        status: 'completed',
+        createdAt: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+    },
 
+    {
+      $unwind: '$items',
+    },
+
+    {
+      $group: {
+        _id: '$items.product',
+
+        unitsSold: {
+          $sum: '$items.quantity',
+        },
+
+        name: {
+          $first: '$items.name',
+        },
+      },
+    },
+  ]);
+
+  const receivedRows = await StockBatch.aggregate([
+    {
+      $match: {
+        purchaseDate: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+    },
+
+    {
+      $group: {
+        _id: '$product',
+
+        unitsReceived: {
+          $sum: '$quantity',
+        },
+      },
+    },
+  ]);
+
+  const receivedMap = new Map(
+    receivedRows.map((row) => [
+      row._id.toString(),
+      row.unitsReceived,
+    ])
+  );
+
+  const rows = soldRows
+    .map((row) => {
+      const unitsReceived =
+        receivedMap.get(row._id.toString()) || 0;
+
+      const sellThrough =
+        unitsReceived > 0
+          ? (row.unitsSold / unitsReceived) * 100
+          : 0;
+
+      return {
+        product: row._id,
+        name: row.name,
+        unitsSold: row.unitsSold,
+        unitsReceived,
+        sellThrough: round(sellThrough),
+      };
+    })
+    .filter((row) => row.unitsReceived > 0)
+    .sort(
+      (a, b) =>
+        b.sellThrough - a.sellThrough
+    )
+    .slice(0, limit);
+
+  return rows;
+}
+
+async function getPurchaseAnalysis(from, to) {
+  const rows = await PurchaseOrder.aggregate([
+    {
+      $match: {
+        createdAt: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+    },
+
+    {
+      $group: {
+        _id: null,
+
+        purchaseValue: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'received'] },
+              '$totalAmount',
+              0,
+            ],
+          },
+        },
+
+        receivedPOs: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'received'] },
+              1,
+              0,
+            ],
+          },
+        },
+
+        pendingPOs: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'pending'] },
+              1,
+              0,
+            ],
+          },
+        },
+
+        cancelledPOs: {
+          $sum: {
+            $cond: [
+              { $eq: ['$status', 'cancelled'] },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  return {
+    purchaseValue: round(rows[0]?.purchaseValue || 0),
+    receivedPOs: rows[0]?.receivedPOs || 0,
+    pendingPOs: rows[0]?.pendingPOs || 0,
+    cancelledPOs: rows[0]?.cancelledPOs || 0,
+  };
+}
 // --------------------------------------------------
 // SUMMARY
 // --------------------------------------------------
@@ -370,7 +527,124 @@ async function getSummary(from, to) {
     wastedUnits: w.units,
   };
 }
+async function getSupplierPurchaseAnalysis(from, to, limit) {
+  const rows = await PurchaseOrder.aggregate([
+    {
+      $match: {
+        status: 'received',
+        createdAt: {
+          $gte: from,
+          $lte: to,
+        },
+      },
+    },
 
+    {
+      $group: {
+        _id: '$supplier',
+
+        purchaseValue: {
+          $sum: '$totalAmount',
+        },
+
+        purchaseOrders: {
+          $sum: 1,
+        },
+
+        itemsPurchased: {
+          $sum: {
+            $sum: '$items.quantity',
+          },
+        },
+      },
+    },
+
+    {
+      $lookup: {
+        from: 'suppliers',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'supplier',
+      },
+    },
+
+    {
+      $unwind: {
+        path: '$supplier',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    {
+      $sort: {
+        purchaseValue: -1,
+      },
+    },
+
+    {
+      $limit: limit,
+    },
+  ]);
+
+  return rows.map((row) => ({
+    supplier: row._id,
+    name: row.supplier?.name || 'Unknown Supplier',
+    purchaseValue: round(row.purchaseValue),
+    purchaseOrders: row.purchaseOrders,
+    itemsPurchased: row.itemsPurchased,
+  }));
+}
+
+
+async function getProfitability(from, to) {
+  const bills = await Bill.find({
+    status: 'completed',
+    createdAt: {
+      $gte: from,
+      $lte: to,
+    },
+  })
+    .select('items')
+    .lean();
+
+  let cogs = 0;
+
+  for (const bill of bills) {
+    for (const item of bill.items) {
+      for (const batch of item.batches || []) {
+        const stockBatch =
+          await StockBatch.findById(batch.batch)
+            .select('costPrice')
+            .lean();
+
+        if (stockBatch) {
+          cogs +=
+            batch.quantity *
+            (stockBatch.costPrice || 0);
+        }
+      }
+    }
+  }
+
+  const summary = await getSummary(from, to);
+
+  const netRevenue = summary.netRevenue || 0;
+
+  const grossProfit =
+    netRevenue - cogs;
+
+  const grossMargin =
+    netRevenue > 0
+      ? (grossProfit / netRevenue) * 100
+      : 0;
+
+  return {
+    netRevenue: round(netRevenue),
+    cogs: round(cogs),
+    grossProfit: round(grossProfit),
+    grossMargin: round(grossMargin),
+  };
+}
 
 // --------------------------------------------------
 // DASHBOARD
@@ -542,6 +816,42 @@ exports.getTopProducts = async (req, res) => {
   }
 };
 
+exports.getFastMovingProducts = async (req, res) => {
+  try {
+    const range = getDateRange(req.query);
+
+    if (!range) {
+      return res.status(400).json({
+        message: 'Use dates like 2026-10-01',
+      });
+    }
+
+    const requestedLimit =
+      parseInt(req.query.limit) || 10;
+
+    const limit = Math.min(
+      Math.max(requestedLimit, 1),
+      50
+    );
+
+    const data = await getFastMovingProducts(
+      range.from,
+      range.to,
+      limit
+    );
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
 
 // --------------------------------------------------
 // REVENUE SUMMARY
@@ -686,6 +996,95 @@ exports.getSalesByCategory = async (req, res) => {
       unitsSold: r.unitsSold,
       revenue: round(r.revenue),
     }));
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+exports.getPurchaseAnalysis = async (req, res) => {
+  try {
+    const range = getDateRange(req.query);
+
+    if (!range) {
+      return res.status(400).json({
+        message: 'Use dates like 2026-10-01',
+      });
+    }
+
+    const data = await getPurchaseAnalysis(
+      range.from,
+      range.to
+    );
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+exports.getSupplierPurchaseAnalysis = async (req, res) => {
+  try {
+    const range = getDateRange(req.query);
+
+    if (!range) {
+      return res.status(400).json({
+        message: 'Use dates like 2026-10-01',
+      });
+    }
+
+    const requestedLimit =
+      parseInt(req.query.limit) || 10;
+
+    const limit = Math.min(
+      Math.max(requestedLimit, 1),
+      50
+    );
+
+    const data =
+      await getSupplierPurchaseAnalysis(
+        range.from,
+        range.to,
+        limit
+      );
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
+exports.getProfitability = async (req, res) => {
+  try {
+    const range = getDateRange(req.query);
+
+    if (!range) {
+      return res.status(400).json({
+        message: 'Use dates like 2026-10-01',
+      });
+    }
+
+    const data = await getProfitability(
+      range.from,
+      range.to
+    );
 
     res.json({
       from: range.from,
