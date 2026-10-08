@@ -646,6 +646,173 @@ async function getProfitability(from, to) {
   };
 }
 
+
+
+async function getProductProfitability(
+  from,
+  to,
+  limit
+) {
+  const bills = await Bill.find({
+    status: 'completed',
+    createdAt: {
+      $gte: from,
+      $lte: to,
+    },
+  })
+    .select('items')
+    .lean();
+
+  const productMap = new Map();
+
+  for (const bill of bills) {
+    for (const item of bill.items) {
+      let revenue = item.lineTotal || 0;
+      let cogs = 0;
+
+      for (const batch of item.batches || []) {
+        const stockBatch =
+          await StockBatch.findById(batch.batch)
+            .select('costPrice')
+            .lean();
+
+        if (stockBatch) {
+          cogs +=
+            batch.quantity *
+            (stockBatch.costPrice || 0);
+        }
+      }
+
+      const productId = item.product.toString();
+
+      if (!productMap.has(productId)) {
+        productMap.set(productId, {
+          product: item.product,
+          name: item.name,
+          unitsSold: 0,
+          revenue: 0,
+          cogs: 0,
+        });
+      }
+
+      const product =
+        productMap.get(productId);
+
+      product.unitsSold += item.quantity;
+      product.revenue += revenue;
+      product.cogs += cogs;
+    }
+  }
+
+  const rows = Array.from(productMap.values());
+
+  return rows
+    .map((row) => {
+      const grossProfit =
+        row.revenue - row.cogs;
+
+      const grossMargin =
+        row.revenue > 0
+          ? (grossProfit / row.revenue) * 100
+          : 0;
+
+      return {
+        product: row.product,
+        name: row.name,
+        unitsSold: row.unitsSold,
+        revenue: round(row.revenue),
+        cogs: round(row.cogs),
+        grossProfit: round(grossProfit),
+        grossMargin: round(grossMargin),
+      };
+    })
+    .sort((a, b) =>
+      b.grossProfit - a.grossProfit
+    )
+    .slice(0, limit);
+}
+
+
+async function getInventoryHealth() {
+  const batches = await StockBatch.find({
+    remainingQuantity: { $gt: 0 },
+  })
+    .populate('product', 'name reorderLevel expiryAlertDays')
+    .lean();
+
+  let inventoryValue = 0;
+  let totalUnits = 0;
+  let expiredUnits = 0;
+  let nearExpiryUnits = 0;
+
+  const lowStockProducts = new Set();
+
+  const now = new Date();
+
+  for (const batch of batches) {
+    const quantity = batch.remainingQuantity || 0;
+    const cost = batch.costPrice || 0;
+
+    inventoryValue += quantity * cost;
+    totalUnits += quantity;
+
+    if (
+      batch.expiryDate &&
+      new Date(batch.expiryDate) < now
+    ) {
+      expiredUnits += quantity;
+    } else if (
+      batch.expiryDate &&
+      batch.product?.expiryAlertDays
+    ) {
+      const alertDate = new Date();
+      alertDate.setDate(
+        alertDate.getDate() +
+        batch.product.expiryAlertDays
+      );
+
+      if (
+        new Date(batch.expiryDate) <= alertDate
+      ) {
+        nearExpiryUnits += quantity;
+      }
+    }
+  }
+
+  const products = await Product.find({
+    isActive: { $ne: false },
+  })
+    .select('name reorderLevel')
+    .lean();
+
+  for (const product of products) {
+    const stock = batches
+      .filter(
+        (batch) =>
+          batch.product?._id?.toString() ===
+          product._id.toString()
+      )
+      .reduce(
+        (total, batch) =>
+          total + (batch.remainingQuantity || 0),
+        0
+      );
+
+    if (stock <= (product.reorderLevel || 0)) {
+      lowStockProducts.add(
+        product._id.toString()
+      );
+    }
+  }
+
+  return {
+    inventoryValue: round(inventoryValue),
+    totalUnits: round(totalUnits),
+    lowStockProducts: lowStockProducts.size,
+    expiredUnits: round(expiredUnits),
+    nearExpiryUnits: round(nearExpiryUnits),
+  };
+}
 // --------------------------------------------------
 // DASHBOARD
 // --------------------------------------------------
@@ -1089,6 +1256,58 @@ exports.getProfitability = async (req, res) => {
     res.json({
       from: range.from,
       to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+exports.getProductProfitability = async (
+  req,
+  res
+) => {
+  try {
+    const range = getDateRange(req.query);
+
+    if (!range) {
+      return res.status(400).json({
+        message: 'Use dates like 2026-10-01',
+      });
+    }
+
+    const requestedLimit =
+      parseInt(req.query.limit) || 10;
+
+    const limit = Math.min(
+      Math.max(requestedLimit, 1),
+      50
+    );
+
+    const data =
+      await getProductProfitability(
+        range.from,
+        range.to,
+        limit
+      );
+
+    res.json({
+      from: range.from,
+      to: range.to,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+exports.getInventoryHealth = async (req, res) => {
+  try {
+    const data = await getInventoryHealth();
+
+    res.json({
       data,
     });
   } catch (err) {

@@ -15,6 +15,11 @@ router.get('/fast-moving', c.getFastMovingProducts);
 router.get('/purchase-analysis', c.getPurchaseAnalysis);
 router.get('/supplier-purchases', c.getSupplierPurchaseAnalysis);
 router.get('/profitability',c.getProfitability);
+router.get('/product-profitability',c.getProductProfitability);
+router.get(
+  '/inventory-health',
+  c.getInventoryHealth
+);
 router.get('/revenue-summary', c.getRevenueSummary);
 router.get('/sales-by-category', c.getSalesByCategory);
 
