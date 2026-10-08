@@ -12,6 +12,8 @@ const [productPerformance, setProductPerformance] = useState({
 const [purchaseAnalysis, setPurchaseAnalysis] = useState(null)
 const [supplierPurchases, setSupplierPurchases] = useState([])
 const [profitability, setProfitability] = useState(null)
+const [productProfitability, setProductProfitability] = useState([])
+const [inventoryHealth, setInventoryHealth] = useState(null)
 
 const [period, setPeriod] = useState('month')
 const [loading, setLoading] = useState(true)
@@ -105,6 +107,31 @@ const profitabilityResponse = await axios.get(
     },
   }
 )
+const productProfitabilityResponse = await axios.get(
+  'http://localhost:5000/api/reports/product-profitability',
+  {
+    headers,
+    params: {
+      from: getStartDate(),
+      to: getTodayDate(),
+      limit: 10,
+    },
+  }
+)
+const inventoryHealthResponse = await axios.get(
+  'http://localhost:5000/api/reports/inventory-health',
+  {
+    headers,
+  }
+)
+
+setInventoryHealth(
+  inventoryHealthResponse.data.data
+)
+
+setProductProfitability(
+  productProfitabilityResponse.data.data || []
+)
 
 setProfitability(
   profitabilityResponse.data.data
@@ -112,9 +139,9 @@ setProfitability(
 
 
 
-    setReport(response.data)
+setReport(response.data)
 
-    setProductPerformance({
+setProductPerformance({
   bestSelling: bestSellingResponse.data.data || [],
   fastMoving: fastMovingResponse.data.data || [],
 })
@@ -172,6 +199,8 @@ setSupplierPurchases(
   const wastageLoss = selectedSummary?.wastageLoss || 0
   const wastedUnits = selectedSummary?.wastedUnits || 0
   const refundCount = selectedSummary?.refundCount || 0
+
+  console.log('SALES TREND:', salesTrend)
 
   return (
     <div className="reports-page">
@@ -684,6 +713,94 @@ setSupplierPurchases(
   </div>
 </section>
 
+<section className="report-section">
+  <h2>Product Profitability</h2>
+
+  <div className="report-table-wrapper">
+    <table className="report-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Units Sold</th>
+          <th>Revenue</th>
+          <th>COGS</th>
+          <th>Gross Profit</th>
+          <th>Margin</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {productProfitability.length > 0 ? (
+          productProfitability.map((item) => (
+            <tr key={item.product}>
+              <td>{item.name}</td>
+              <td>{item.unitsSold}</td>
+              <td>{formatCurrency(item.revenue)}</td>
+              <td>{formatCurrency(item.cogs)}</td>
+              <td>
+                {formatCurrency(item.grossProfit)}
+              </td>
+              <td>
+                {item.grossMargin}%
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan="6">
+              No product profitability data available
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section className="report-section">
+  <h2>Inventory Health</h2>
+
+  <div className="report-summary">
+
+    <div className="report-card">
+      <h3>Inventory Value</h3>
+      <p>
+        {formatCurrency(
+          inventoryHealth?.inventoryValue
+        )}
+      </p>
+    </div>
+
+    <div className="report-card">
+      <h3>Total Units in Stock</h3>
+      <p>
+        {inventoryHealth?.totalUnits || 0}
+      </p>
+    </div>
+
+    <div className="report-card">
+      <h3>Low Stock Products</h3>
+      <p>
+        {inventoryHealth?.lowStockProducts || 0}
+      </p>
+    </div>
+
+    <div className="report-card">
+      <h3>Expired Stock</h3>
+      <p>
+        {inventoryHealth?.expiredUnits || 0}
+      </p>
+    </div>
+
+    <div className="report-card">
+      <h3>Near Expiry</h3>
+      <p>
+        {inventoryHealth?.nearExpiryUnits || 0}
+      </p>
+    </div>
+
+  </div>
+</section>
 
       {/* Sales Trend */}
 
@@ -754,10 +871,8 @@ setSupplierPurchases(
                     >
 
                       <td>
-                        {item._id ||
-                          item.date ||
-                          '-'}
-                      </td>
+  {item.label || '-'}
+</td>
 
                       <td>
                         {formatCurrency(sales)}
