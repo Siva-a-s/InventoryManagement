@@ -36,8 +36,7 @@ const App = () => {
         <Route path="/purchase-orders" element={<PurchaseOrder />}
 />
          <Route
-          path="/billing"
-          element={
+          path="/billing" element={
             <Layout>
               <Billing />
             </Layout>

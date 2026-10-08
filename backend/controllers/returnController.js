@@ -336,7 +336,9 @@ exports.getReturns = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate('processedBy', 'name');
+      .populate('processedBy', 'name')
+      .populate('bill', 'billNumber')
+      .populate('items.product', 'unit');
 
     const count = await Return.countDocuments(filter);
 

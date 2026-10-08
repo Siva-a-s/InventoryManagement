@@ -5,6 +5,9 @@ import './Returns.css'
 const Returns = () => {
   const [bills, setBills] = useState([])
   const [bill, setBill] = useState(null)
+  const [returnHistory, setReturnHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
 
   const [selectedItems, setSelectedItems] = useState({})
   const [refundMethod, setRefundMethod] = useState('cash')
@@ -33,11 +36,36 @@ const Returns = () => {
     }
   }, [token])
 
+  const fetchReturnHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    setHistoryError('')
+
+    try {
+      const response = await axios.get(
+        'http://localhost:5000/api/returns',
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      setReturnHistory(response.data.returns || [])
+    } catch (error) {
+      setHistoryError(
+        error.response?.data?.message || 'Failed to load return history'
+      )
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
     // Initial API loading is an external synchronization effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBills()
-  }, [fetchBills])
+    fetchReturnHistory()
+  }, [fetchBills, fetchReturnHistory])
 
   const selectBill = async (billNumber) => {
     try {
@@ -111,6 +139,7 @@ const Returns = () => {
       setNote('')
 
       fetchBills()
+      fetchReturnHistory()
     } catch (error) {
       alert(
         error.response?.data?.message ||
@@ -415,6 +444,65 @@ const Returns = () => {
 
         </div>
       )}
+
+      <div className="return-card">
+        <div className="bills-header">
+          <div>
+            <h3>Return History</h3>
+            <p>Previously processed customer returns</p>
+          </div>
+        </div>
+
+        {historyLoading ? (
+          <div className="no-bills"><p>Loading return history...</p></div>
+        ) : historyError ? (
+          <div className="no-bills return-history-error">
+            <p>{historyError}</p>
+            <button className="select-bill-button" onClick={fetchReturnHistory}>
+              Try again
+            </button>
+          </div>
+        ) : returnHistory.length === 0 ? (
+          <div className="no-bills"><p>No returns have been processed yet.</p></div>
+        ) : (
+          <div className="bills-scroll-container return-history-scroll">
+            <table className="bills-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Bill</th>
+                  <th>Product</th>
+                  <th>Quantity</th>
+                  <th>Reason</th>
+                  <th>Refund</th>
+                  <th>Restocked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {returnHistory.flatMap((record) =>
+                  record.items.map((item, index) => (
+                    <tr key={`${record._id}-${index}`}>
+                      <td>{new Date(record.createdAt).toLocaleDateString('en-GB', {
+                        day: '2-digit', month: 'short', year: 'numeric',
+                      })}</td>
+                      <td><strong>{record.bill?.billNumber || '—'}</strong></td>
+                      <td>{item.name || item.product?.name || 'Product'}</td>
+                      <td>{item.quantity} {item.product?.unit || ''}</td>
+                      <td>{(item.reason || 'other').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}</td>
+                      <td>₹{Number(item.refundAmount).toLocaleString('en-IN')}</td>
+                      <td>
+                        <span className={item.restocked ? 'status-badge' : 'return-not-restocked'}>
+                          {item.restocked ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
     </div>
   )
