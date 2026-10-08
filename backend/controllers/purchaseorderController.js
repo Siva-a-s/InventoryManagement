@@ -131,6 +131,15 @@ exports.getPurchaseOrders = async (req, res) => {
   }
 };
 
+exports.getPurchaseOrderSummary = async (req, res) => {
+  try {
+    const pendingOrders = await PurchaseOrder.countDocuments({ status: 'pending' });
+    res.json({ pendingOrders });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 
 // GET SINGLE PURCHASE ORDER
 exports.getPurchaseOrder = async (req, res) => {
@@ -281,52 +290,44 @@ exports.receivePurchaseOrder = async (req, res) => {
 
     // Only pending orders can be received
     if (order.status !== 'pending') {
-      return res.status(400).json({
-        message: `This order is already ${order.status}`
-      });
+      throw Object.assign(new Error(`This order is already ${order.status}`), { status: 400 });
     }
 
     const { items } = req.body;
 
     if (!Array.isArray(items) || items.length !== order.items.length) {
-      return res.status(400).json({
-        message: 'Please provide receiving details for all items'
-      });
+      throw Object.assign(new Error('Please provide receiving details for all items'), { status: 400 });
+    }
+
+    const receivedByOrderItem = new Map();
+    for (const item of order.items) {
+      const receivedItem = items.find((entry) =>
+        entry.itemId && String(entry.itemId) === String(item._id)
+      );
+
+      if (!receivedItem) {
+        throw Object.assign(new Error('Receiving details missing for an item'), { status: 400 });
+      }
+
+      const receivedQuantity = Number(receivedItem.receivedQuantity);
+      if (!Number.isInteger(receivedQuantity) || receivedQuantity <= 0) {
+        throw Object.assign(new Error('Received quantity must be a positive whole number'), { status: 400 });
+      }
+      if (receivedQuantity !== item.quantity) {
+        throw Object.assign(new Error(`Received quantity for each item must equal the ordered quantity (${item.quantity})`), { status: 400 });
+      }
+      if (!receivedItem.batchNumber) {
+        throw Object.assign(new Error('Batch number is required'), { status: 400 });
+      }
+      if (!receivedItem.expiryDate || isNaN(new Date(receivedItem.expiryDate))) {
+        throw Object.assign(new Error('A valid expiry date is required'), { status: 400 });
+      }
+      receivedByOrderItem.set(String(item._id), receivedItem);
     }
 
     // Create stock batch for every item
     for (const item of order.items) {
-      const receivedItem = items.find(
-        (received) =>
-          received.itemId.toString() === item._id.toString()
-      );
-
-      if (!receivedItem) {
-        return res.status(400).json({
-          message: 'Receiving details missing for an item'
-        });
-      }
-
-      if (
-        !receivedItem.receivedQuantity ||
-        Number(receivedItem.receivedQuantity) <= 0
-      ) {
-        return res.status(400).json({
-          message: 'Received quantity must be greater than 0'
-        });
-      }
-
-      if (!receivedItem.batchNumber) {
-        return res.status(400).json({
-          message: 'Batch number is required'
-        });
-      }
-
-      if (!receivedItem.expiryDate) {
-        return res.status(400).json({
-          message: 'Expiry date is required'
-        });
-      }
+      const receivedItem = receivedByOrderItem.get(String(item._id));
 
       const batch = await StockBatch.create(
         [
@@ -357,6 +358,7 @@ exports.receivePurchaseOrder = async (req, res) => {
     order.receivedBy = req.user._id;
 
     await order.save({ session });
+    await order.populate('items.product', 'name unit');
 
     await session.commitTransaction();
 
@@ -366,10 +368,7 @@ const supplier = await Supplier.findById(order.supplier).select('name');
 if (owner?.email) {
   const itemDetails = order.items
     .map((item) => {
-      const receivedItem = items.find(
-        (received) =>
-          received.itemId.toString() === item._id.toString()
-      );
+      const receivedItem = receivedByOrderItem.get(String(item._id));
 
       const receivedQuantity = receivedItem
         ? Number(receivedItem.receivedQuantity)
@@ -408,12 +407,12 @@ Smart Inventory Management`
   } catch (err) {
     await session.abortTransaction();
 
-    res.status(500).json({
+    res.status(err.status || 500).json({
       message: err.message
     });
 
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 };
 

@@ -11,7 +11,9 @@ const StockBatch = require('../models/StockBatch');
 // CREATE RETURN
 // Owner + Staff
 exports.createReturn = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
+    session.startTransaction();
     const { billId, items, refundMethod, note } = req.body;
 
     // -----------------------------
@@ -50,7 +52,7 @@ exports.createReturn = async (req, res) => {
     // 2. FIND BILL
     // -----------------------------
 
-    const bill = await Bill.findById(billId);
+    const bill = await Bill.findById(billId).session(session);
 
     if (!bill) {
       return res.status(404).json({
@@ -71,7 +73,7 @@ exports.createReturn = async (req, res) => {
 
     const previousReturns = await Return.find({
       bill: bill._id
-    });
+    }).session(session);
 
     const alreadyReturned = {};
 
@@ -201,9 +203,20 @@ exports.createReturn = async (req, res) => {
         const billLineBatches = billItem.batches || [];
 
         for (const soldBatch of billLineBatches) {
-          const batch = await StockBatch.findById(
-            soldBatch.batch
+          const alreadyRestockedFromBatch = previousReturns.reduce((total, previousReturn) =>
+            total + previousReturn.items.reduce((itemTotal, previousItem) =>
+              itemTotal + (
+                String(previousItem.product) === productId &&
+                previousItem.restocked &&
+                String(previousItem.restockedBatch) === String(soldBatch.batch)
+                  ? previousItem.quantity
+                  : 0
+              ), 0
+            ), 0
           );
+          if (soldBatch.quantity - alreadyRestockedFromBatch < requested.quantity) continue;
+
+          const batch = await StockBatch.findById(soldBatch.batch).session(session);
 
           if (!batch) {
             continue;
@@ -242,9 +255,7 @@ exports.createReturn = async (req, res) => {
         refundAmount,
         reason: requested.reason,
         restocked: restock,
-        restockedBatch: restockedBatch
-          ? restockedBatch._id
-          : undefined
+        restockedBatch: restockedBatch ? restockedBatch._id : undefined
       });
 
       totalRefund += refundAmount;
@@ -259,43 +270,38 @@ exports.createReturn = async (req, res) => {
         continue;
       }
 
-      const batch = await StockBatch.findById(
-        line.restockedBatch
+      const originalBatch = await StockBatch.findById(line.restockedBatch).session(session);
+      const batch = originalBatch && await StockBatch.findOneAndUpdate(
+        {
+          _id: line.restockedBatch,
+          remainingQuantity: { $lte: originalBatch.quantity - line.quantity },
+        },
+        { $inc: { remainingQuantity: line.quantity } },
+        { new: true, session }
       );
 
       if (!batch) {
-        return res.status(400).json({
-          message: 'Stock batch no longer exists'
-        });
+        throw Object.assign(
+          new Error('Stock batch no longer exists or cannot accept the returned quantity'),
+          { status: 400 }
+        );
       }
-
-      // Final safety check
-      if (
-        batch.remainingQuantity + line.quantity >
-        batch.quantity
-      ) {
-        return res.status(400).json({
-          message: 'Cannot restore more stock than the batch originally contained'
-        });
-      }
-
-      batch.remainingQuantity += line.quantity;
-
-      await batch.save();
     }
 
     // -----------------------------
     // 9. CREATE RETURN RECORD
     // -----------------------------
 
-    const newReturn = await Return.create({
+    const newReturnRecords = await Return.create([{
       bill: bill._id,
       items: lines,
       totalRefund: Math.round(totalRefund * 100) / 100,
       refundMethod: refundMethod || 'cash',
       note,
       processedBy: req.user._id
-    });
+    }], { session });
+
+    await session.commitTransaction();
 
     // -----------------------------
     // 10. SEND RESPONSE
@@ -303,13 +309,16 @@ exports.createReturn = async (req, res) => {
 
     res.status(201).json({
       message: 'Return processed successfully',
-      return: newReturn
+      return: newReturnRecords[0]
     });
 
   } catch (err) {
-    res.status(500).json({
+    await session.abortTransaction();
+    res.status(err.status || 500).json({
       message: err.message
     });
+  } finally {
+    await session.endSession();
   }
 };
 

@@ -1,12 +1,19 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import './Reports.css'
+
+const getTodayDate = () => new Date().toISOString().split('T')[0]
+
+const getStartDate = () => {
+  const date = new Date()
+  date.setDate(date.getDate() - 30)
+  return date.toISOString().split('T')[0]
+}
 
 const Reports = () => {
   const [report, setReport] = useState(null)
 const [productPerformance, setProductPerformance] = useState({
   bestSelling: [],
-  fastMoving: [],
 })
 
 const [purchaseAnalysis, setPurchaseAnalysis] = useState(null)
@@ -20,27 +27,11 @@ const [loading, setLoading] = useState(true)
 
   const token = localStorage.getItem('token')
 
-  const headers = {
+  const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`,
-  }
+  }), [token])
 
-  useEffect(() => {
-    fetchReports()
-  }, [])
-
-  const getTodayDate = () => {
-  return new Date().toISOString().split('T')[0]
-}
-
-const getStartDate = () => {
-  const date = new Date()
-
-  date.setDate(date.getDate() - 30)
-
-  return date.toISOString().split('T')[0]
-}
-
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
   try {
     setLoading(true)
 
@@ -63,17 +54,6 @@ const bestSellingResponse = await axios.get(
   }
 )
 
-const fastMovingResponse = await axios.get(
-  'http://localhost:5000/api/reports/fast-moving',
-  {
-    headers,
-    params: {
-      from: getStartDate(),
-      to: getTodayDate(),
-      limit: 10,
-    },
-  }
-)
 const purchaseResponse = await axios.get(
   'http://localhost:5000/api/reports/purchase-analysis',
   {
@@ -143,7 +123,6 @@ setReport(response.data)
 
 setProductPerformance({
   bestSelling: bestSellingResponse.data.data || [],
-  fastMoving: fastMovingResponse.data.data || [],
 })
 setPurchaseAnalysis(
   purchaseResponse.data.data
@@ -164,7 +143,13 @@ setSupplierPurchases(
   } finally {
     setLoading(false)
   }
-}
+}, [headers])
+
+useEffect(() => {
+  // Initial API loading is an external synchronization effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  fetchReports()
+}, [fetchReports])
 
   const formatCurrency = (value) => {
     return `₹${Number(value || 0).toLocaleString('en-IN')}`
@@ -406,7 +391,7 @@ setSupplierPurchases(
       <h2>Product Performance</h2>
 
       <p>
-        Understand which products sell the most and which products move fastest.
+        See which products have sold the most.
       </p>
     </div>
 
@@ -468,56 +453,6 @@ setSupplierPurchases(
     </div>
 
 
-    <div className="performance-card">
-
-      <h3>Fast-Moving Products</h3>
-
-      <p>
-        Products with the highest sell-through rate.
-      </p>
-
-      {!productPerformance?.fastMoving?.length ? (
-
-        <p className="empty-report">
-          No receiving and sales data available.
-        </p>
-
-      ) : (
-
-        <div className="performance-list">
-
-          {productPerformance.fastMoving.map(
-            (product, index) => (
-
-              <div
-                className="performance-row"
-                key={product.product || index}
-              >
-
-                <div>
-                  <strong>
-                    {index + 1}. {product.name}
-                  </strong>
-
-                  <small>
-                    {product.unitsSold} sold / {product.unitsReceived} received
-                  </small>
-                </div>
-
-                <span>
-                  {product.sellThrough}%
-                </span>
-
-              </div>
-
-            )
-          )}
-
-        </div>
-
-      )}
-
-    </div>
 
   </div>
 

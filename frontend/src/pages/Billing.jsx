@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import './Billing.css'
 
@@ -25,12 +25,7 @@ const [selectedBill, setSelectedBill] = useState(null)
 
   const token = localStorage.getItem('token')
 
-  useEffect(() => {
-  fetchProducts()
-  fetchBills()
-}, [])
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/products',
@@ -45,9 +40,9 @@ const [selectedBill, setSelectedBill] = useState(null)
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to load products')
     }
-  }
+  }, [token])
 
-  const fetchBills = async () => {
+  const fetchBills = useCallback(async () => {
   try {
     const response = await axios.get(
       'http://localhost:5000/api/bills',
@@ -62,7 +57,14 @@ const [selectedBill, setSelectedBill] = useState(null)
   } catch (error) {
     alert(error.response?.data?.message || 'Failed to load bill history')
   }
-}
+}, [token])
+
+useEffect(() => {
+  // Initial API loading is an external synchronization effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  fetchProducts()
+  fetchBills()
+}, [fetchProducts, fetchBills])
 
 const viewBill = async (id) => {
   try {

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Dashboard.css'
 
 const Dashboard = () => {
   const [products, setProducts] = useState([])
-  const [stock, setStock] = useState([])
-  const [bills, setBills] = useState([])
-  const [orders, setOrders] = useState([])
+  const [stock, setStock] = useState({ availableStock: 0 })
+  const [todaySales, setTodaySales] = useState({ totalSales: 0, totalBills: 0 })
+  const [pendingOrders, setPendingOrders] = useState(0)
   const [alerts, setAlerts] = useState({
     lowStock: [],
     expiry: []
@@ -15,11 +15,7 @@ const Dashboard = () => {
 
   const token = localStorage.getItem('token')
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const headers = {
         Authorization: `Bearer ${token}`
@@ -33,9 +29,9 @@ const Dashboard = () => {
         alertsResponse
       ] = await Promise.all([
         axios.get('http://localhost:5000/api/products', { headers }),
-        axios.get('http://localhost:5000/api/stock', { headers }),
-        axios.get('http://localhost:5000/api/bills', { headers }),
-        axios.get('http://localhost:5000/api/purchase-orders', { headers }),
+        axios.get('http://localhost:5000/api/stock/summary', { headers }),
+        axios.get('http://localhost:5000/api/bills/summary/today', { headers }),
+        axios.get('http://localhost:5000/api/purchase-orders/summary', { headers }),
         axios.get('http://localhost:5000/api/alerts', { headers })
       ])
 
@@ -43,20 +39,9 @@ const Dashboard = () => {
         productsResponse.data.data || productsResponse.data || []
       )
 
-      setStock(
-        stockResponse.data.data || stockResponse.data || []
-      )
-
-      setBills(
-        billsResponse.data.bills ||
-        billsResponse.data.data ||
-        billsResponse.data ||
-        []
-      )
-
-      setOrders(
-        ordersResponse.data.orders || []
-      )
+      setStock(stockResponse.data)
+      setTodaySales(billsResponse.data)
+      setPendingOrders(ordersResponse.data.pendingOrders || 0)
 
       setAlerts({
         lowStock: alertsResponse.data.lowStock || [],
@@ -65,33 +50,13 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Dashboard error:', error)
     }
-  }
+  }, [token])
 
-  // Total available stock
-  const totalStock = stock.reduce(
-    (total, batch) => total + (batch.remainingQuantity || 0),
-    0
-  )
-
-  // Today's bills
-  const today = new Date().toDateString()
-
-  const todayBills = bills.filter(
-    (bill) =>
-      bill.createdAt &&
-      new Date(bill.createdAt).toDateString() === today
-  )
-
-  // Today's sales
-  const todaySales = todayBills.reduce(
-    (total, bill) => total + (bill.total || 0),
-    0
-  )
-
-  // Pending purchase orders
-  const pendingOrders = orders.filter(
-    (order) => order.status === 'pending'
-  )
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   return (
     <Layout>
@@ -114,7 +79,7 @@ const Dashboard = () => {
 
         <div className="dashboard-card">
           <h3>Total Stock</h3>
-          <p>{totalStock}</p>
+          <p>{stock.availableStock || 0}</p>
         </div>
 
         <div className="dashboard-card">
@@ -124,17 +89,17 @@ const Dashboard = () => {
 
         <div className="dashboard-card">
           <h3>Today's Sales</h3>
-          <p>₹{todaySales.toFixed(2)}</p>
+          <p>₹{Number(todaySales.totalSales || 0).toFixed(2)}</p>
         </div>
 
         <div className="dashboard-card">
           <h3>Today's Bills</h3>
-          <p>{todayBills.length}</p>
+          <p>{todaySales.totalBills || 0}</p>
         </div>
 
         <div className="dashboard-card">
           <h3>Pending Orders</h3>
-          <p>{pendingOrders.length}</p>
+          <p>{pendingOrders}</p>
         </div>
 
       </div>
@@ -144,12 +109,12 @@ const Dashboard = () => {
       <div className="attention-section">
 
         <div className="section-header">
-          <h2>⚠️ Needs Attention</h2>
+          <h2>Needs Attention</h2>
         </div>
 
         {alerts.lowStock.length === 0 &&
          alerts.expiry.length === 0 &&
-         pendingOrders.length === 0 ? (
+         pendingOrders === 0 ? (
 
           <div className="no-alerts">
             <span>✓</span>
@@ -162,8 +127,7 @@ const Dashboard = () => {
 
             {alerts.lowStock.map((item, index) => (
               <div className="attention-item low-stock" key={`low-${index}`}>
-                <div className="attention-icon">🔴</div>
-
+                <div className="attention-icon">!</div>
                 <div>
                   <strong>Low Stock</strong>
                   <p>
@@ -177,8 +141,7 @@ const Dashboard = () => {
 
             {alerts.expiry.map((item, index) => (
               <div className="attention-item expiry-alert" key={`expiry-${index}`}>
-                <div className="attention-icon">🟠</div>
-
+                <div className="attention-icon">!</div>
                 <div>
                   <strong>Expiring Soon</strong>
                   <p>
@@ -190,18 +153,15 @@ const Dashboard = () => {
               </div>
             ))}
 
-            {pendingOrders.map((order, index) => (
-              <div className="attention-item pending-order" key={`order-${index}`}>
-                <div className="attention-icon">🔵</div>
-
+            {pendingOrders > 0 && (
+              <div className="attention-item pending-order">
+                <div className="attention-icon">!</div>
                 <div>
-                  <strong>Pending Purchase Order</strong>
-                  <p>
-                    {order.poNumber || 'Purchase order'} is waiting to be received.
-                  </p>
+                  <strong>Pending Purchase Orders</strong>
+                  <p>{pendingOrders} purchase order(s) are waiting to be received.</p>
                 </div>
               </div>
-            ))}
+            )}
 
           </div>
 

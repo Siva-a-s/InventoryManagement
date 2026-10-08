@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import './Returns.css'
 
@@ -13,11 +13,7 @@ const Returns = () => {
 
   const token = localStorage.getItem('token')
 
-  useEffect(() => {
-    fetchBills()
-  }, [])
-
-  const fetchBills = async () => {
+  const fetchBills = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/bills',
@@ -35,7 +31,13 @@ const Returns = () => {
           'Failed to load bills'
       )
     }
-  }
+  }, [token])
+
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchBills()
+  }, [fetchBills])
 
   const selectBill = async (billNumber) => {
     try {
@@ -70,7 +72,7 @@ const Returns = () => {
 
   const processReturn = async () => {
     const items = Object.entries(selectedItems)
-      .filter(([_, item]) => Number(item.quantity) > 0)
+      .filter(([, item]) => Number(item.quantity) > 0)
       .map(([productId, item]) => ({
         productId,
         quantity: Number(item.quantity),
@@ -228,7 +230,7 @@ const Returns = () => {
 
         {filteredBills.length > 5 && (
           <div className="bill-scroll-hint">
-            ↓ Scroll to view more bills
+            Scroll to view more bills
           </div>
         )}
 

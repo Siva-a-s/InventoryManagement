@@ -12,7 +12,7 @@ router.post('/', protect, authorize('owner', 'staff'), bill.createBill);
 router.get('/', protect, authorize('owner', 'staff'), bill.getBills);
 
 // Owner only (keep before '/:id' so "summary" isn't treated as an id)
-router.get('/summary/today', protect, authorize('owner'), bill.getSalesSummary);
+router.get('/summary/today', protect, authorize('owner', 'staff'), bill.getSalesSummary);
 router.patch('/:id/cancel', protect, authorize('owner'), bill.cancelBill);
 
 router.get('/:id', protect, authorize('owner', 'staff'), bill.getBillById);

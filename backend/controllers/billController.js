@@ -5,6 +5,7 @@ const Product = require('../models/Product');
 const StockBatch = require('../models/StockBatch');
 const Counter = require('../models/Counter');
 const Discount = require('../models/Discount');
+const Return = require('../models/Return');
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -100,8 +101,8 @@ async function calculateBill(items) {
   let discount = 0;
 
   for (const productId of productIds) {
-    const product = await Product.findById(productId);
-    if (!product) fail(404, 'Product not found');
+    const product = await Product.findOne({ _id: productId, isActive: { $ne: false } });
+    if (!product) fail(404, 'Product not found or inactive');
 
     const quantity = merged[productId];
     const gross = round2(product.price * quantity);
@@ -220,7 +221,7 @@ exports.createBill = async (req, res) => {
           remaining
         );
 
-        await StockBatch.updateOne(
+        const stockUpdate = await StockBatch.updateOne(
           {
             _id: batch._id,
             remainingQuantity: { $gte: take }
@@ -231,12 +232,21 @@ exports.createBill = async (req, res) => {
           { session }
         );
 
+        if (stockUpdate.modifiedCount !== 1) {
+          fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
+        }
+
         lines[i].batches.push({
           batch: batch._id,
-          quantity: take
+          quantity: take,
+          costPrice: Number(batch.costPrice) || 0,
         });
 
         remaining -= take;
+      }
+
+      if (remaining > 0) {
+        fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
       }
     }
 
@@ -274,7 +284,7 @@ exports.createBill = async (req, res) => {
     handleError(res, err);
 
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 };
 // GET /api/bills?billNumber=BILL-000012&from=2026-09-01&to=2026-09-30&status=completed
@@ -312,14 +322,7 @@ exports.getBills = async (req, res) => {
 // GET /api/bills/:id   (id can be the database id OR a bill number like BILL-000012)
 exports.getBillById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const query = id.toUpperCase().startsWith('BILL-')
-      ? { billNumber: id.toUpperCase() }
-      : { _id: id };
-
     const bill = await findBillByRef(req.params.id).populate('cashier', 'name');
-
-    // const bill = await Bill.findOne(query).populate('cashier', 'name');
     if (!bill) fail(404, 'Bill not found');
 
     if (req.user.role !== 'owner' && String(bill.cashier._id) !== String(req.user._id)) {
@@ -347,6 +350,10 @@ exports.cancelBill = async (req, res) => {
 
     if (bill.status === 'cancelled') {
       fail(400, 'Bill is already cancelled');
+    }
+
+    if (await Return.exists({ bill: bill._id }).session(session)) {
+      fail(400, 'This bill has returns and cannot be cancelled.');
     }
 
     // Restore stock to the same batches used by the bill
@@ -384,14 +391,22 @@ exports.cancelBill = async (req, res) => {
     handleError(res, err);
 
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 };
 
 // GET /api/bills/summary?from=2026-09-01&to=2026-09-30   (owner only)
 exports.getSalesSummary = async (req, res) => {
   try {
-    const { from, to } = req.query;
+    let { from, to } = req.query;
+
+    if (!from && !to) {
+      const now = new Date();
+      const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+      istNow.setUTCHours(0, 0, 0, 0);
+      from = new Date(istNow.getTime() - 5.5 * 60 * 60 * 1000);
+      to = now;
+    }
 
     const match = {};
     if (from || to) {

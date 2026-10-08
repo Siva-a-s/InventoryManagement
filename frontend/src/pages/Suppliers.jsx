@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Suppliers.css'
@@ -57,6 +57,8 @@ const Suppliers = () => {
   }
 
   useEffect(() => {
+    // These async loaders update state after their API requests complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSuppliers()
     fetchProducts()
   }, [])
@@ -441,9 +443,7 @@ const Suppliers = () => {
 
           {filteredSuppliers.length === 0 ? (
             <div className="supplier-empty">
-              <div className="supplier-empty-icon">
-                🏢
-              </div>
+              <div className="supplier-empty-icon">Supplier</div>
 
               <h3>
                 {search

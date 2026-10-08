@@ -1,10 +1,42 @@
 .app-layout {
   display: flex;
   min-height: 100vh;
+  background: #f4f7f9;
 }
 
 .main-content {
   flex: 1;
-  padding: 30px;
-  background: #f4f6f8;
+  min-width: 0;
+  padding: 30px 36px 42px;
+  background: #f4f7f9;
+}
+
+.workspace-content { min-width: 0; flex: 1; }
+
+.topbar {
+  height: 78px;
+  padding: 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.breadcrumb, .topbar-actions { display: flex; align-items: center; gap: 13px; }
+.breadcrumb { color: #738291; font-size: 14px; }
+.breadcrumb strong { color: #1d2a35; font-weight: 600; }
+.topbar-role { color: #647586; text-transform: capitalize; }
+.topbar-alert-link { width: 38px; height: 38px; display: grid; place-items: center; color: #647586; border: 1px solid #e0e7ec; border-radius: 10px; }
+.topbar-alert-link:hover { color: #13815f; background: #eff8f4; }
+
+@media (max-width: 900px) {
+  .main-content { padding: 24px; }
+  .topbar { height: 68px; padding: 0 24px; }
+}
+
+@media (max-width: 640px) {
+  .main-content { padding: 20px 14px 30px; }
+  .topbar { height: 60px; padding: 0 15px; }
+  .topbar-role { display: none; }
 }

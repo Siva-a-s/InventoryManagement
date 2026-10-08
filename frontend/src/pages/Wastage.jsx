@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import './Wastage.css'
 
@@ -16,15 +16,11 @@ const Wastage = () => {
 
   const token = localStorage.getItem('token')
 
-  const headers = {
+  const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`,
-  }
+  }), [token])
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [batchResponse, wastageResponse, summaryResponse] =
         await Promise.all([
@@ -48,7 +44,13 @@ const Wastage = () => {
           'Failed to load wastage data'
       )
     }
-  }
+  }, [headers])
+
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData()
+  }, [fetchData])
 
   const handleChange = (e) => {
     setForm({
@@ -111,9 +113,7 @@ const Wastage = () => {
         }
       )
 
-      alert(
-        'Expired stock written off successfully.\nUnits: ${response.data.unitsWrittenOff}\nLoss: ₹${response.data.totalLoss}'
-      )
+      alert(`Expired stock written off successfully.\nUnits: ${response.data.unitsWrittenOff}\nLoss: ₹${response.data.totalLoss}`)
 
       fetchData()
     } catch (error) {

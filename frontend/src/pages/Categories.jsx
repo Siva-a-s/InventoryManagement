@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Categories.css'
@@ -52,6 +52,8 @@ const Categories = () => {
   }
 
   useEffect(() => {
+    // These async loaders update state after their API requests complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCategories()
     fetchCategorySummary()
   }, [])
@@ -243,9 +245,7 @@ const Categories = () => {
 
             <div className="category-empty">
 
-              <div className="empty-icon">
-                📂
-              </div>
+              <div className="empty-icon">Folder</div>
 
               <h3>
                 {search
@@ -301,15 +301,7 @@ const Categories = () => {
                           <td>
 
                             <div className="category-name">
-
-                              <span className="category-icon">
-                                📁
-                              </span>
-
-                              <span>
-                                {category.name}
-                              </span>
-
+                             <span>{category.name}</span>
                             </div>
 
                           </td>

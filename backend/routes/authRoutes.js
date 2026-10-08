@@ -3,12 +3,11 @@ const router = express.Router();
 const protect = require('../middleware/auth');
 const authorize = require('../middleware/roleCheck');
 const {
-  signup, login, createStaff, getAllStaff, deleteStaff, getMe
+  signup, login, createStaff, getAllStaff, deleteStaff
 } = require('../controllers/authController');
 
 router.post('/signup', signup);
 router.post('/login', login);
-// router.get('/me', protect, getMe);
 
 router.post('/staff', protect, authorize('owner'), createStaff);
 router.get('/staff', protect, authorize('owner'), getAllStaff);

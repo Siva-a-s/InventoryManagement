@@ -1,6 +1,14 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Bill = require('../models/Bill');
+const Wastage = require('../models/Wastage');
+const Return = require('../models/Return');
+const StockBatch = require('../models/StockBatch');
+const PurchaseOrder = require('../models/Purchaseorder');
+const Product = require('../models/Product');
+const Supplier = require('../models/Supplier');
+const Discount = require('../models/Discount');
 
 const generateToken = (user) =>
   jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
@@ -71,16 +79,40 @@ exports.createStaff = async (req, res) => {
 };
 
 exports.getAllStaff = async (req, res) => {
-  const staff = await User.find({ role: 'staff' }).select('-password');
-  res.json(staff);
+  try {
+    const staff = await User.find({ role: 'staff' }).select('-password');
+    res.json(staff);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 };
 
 exports.deleteStaff = async (req, res) => {
-  await User.findByIdAndDelete(req.params.id);
-  res.json({ message: 'Staff removed' });
-};
+  try {
+    const staff = await User.findOne({ _id: req.params.id, role: 'staff' });
+    if (!staff) return res.status(404).json({ message: 'Staff member not found' });
 
-// exports.getMe = async (req, res) => {
-//   const user = await User.findById(req.user.id).select('-password');
-//   res.json(user);
-// };
+    const [bills, wastage, returns, batches, ordered, received, products, suppliers, discounts] = await Promise.all([
+      Bill.exists({ cashier: staff._id }),
+      Wastage.exists({ recordedBy: staff._id }),
+      Return.exists({ processedBy: staff._id }),
+      StockBatch.exists({ receivedBy: staff._id }),
+      PurchaseOrder.exists({ orderedBy: staff._id }),
+      PurchaseOrder.exists({ receivedBy: staff._id }),
+      Product.exists({ createdBy: staff._id }),
+      Supplier.exists({ createdBy: staff._id }),
+      Discount.exists({ createdBy: staff._id }),
+    ]);
+
+    if (bills || wastage || returns || batches || ordered || received || products || suppliers || discounts) {
+      staff.isActive = false;
+      await staff.save();
+      return res.json({ message: 'Staff member has history and was deactivated', deactivated: true });
+    }
+
+    await staff.deleteOne();
+    res.json({ message: 'Staff removed', deactivated: false });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

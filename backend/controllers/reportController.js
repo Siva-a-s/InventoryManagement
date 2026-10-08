@@ -136,15 +136,35 @@ async function getSalesTrend(from, to, period) {
     },
   ]);
 
-  return rows.map((r) => ({
-    label: r._id,
-    sales: round(r.sales),
-    bills: r.bills,
-    itemsSold: r.itemsSold,
-    avgBillValue: r.bills
-      ? round(r.sales / r.bills)
-      : 0,
-  }));
+  const byLabel = new Map(rows.map((row) => [row._id, { sales: row.sales, bills: row.bills, itemsSold: row.itemsSold }]));
+  const returnedRows = await Return.aggregate([
+    { $match: { createdAt: { $gte: from, $lte: to } } },
+    { $lookup: { from: Bill.collection.name, localField: 'bill', foreignField: '_id', as: 'billInfo' } },
+    { $unwind: '$billInfo' },
+    { $match: { 'billInfo.status': 'completed' } },
+    { $unwind: '$items' },
+    {
+      $group: {
+        _id: { $dateToString: { format: formats[period], date: '$createdAt', timezone: TIMEZONE } },
+        refunds: { $sum: '$items.refundAmount' },
+        units: { $sum: '$items.quantity' },
+      },
+    },
+  ]);
+  for (const returned of returnedRows) {
+    const row = byLabel.get(returned._id) || { sales: 0, bills: 0, itemsSold: 0 };
+    row.sales -= returned.refunds || 0;
+    row.itemsSold -= returned.units || 0;
+    byLabel.set(returned._id, row);
+  }
+
+  return Array.from(byLabel, ([label, row]) => ({
+    label,
+    sales: round(row.sales),
+    bills: row.bills,
+    itemsSold: Math.max(0, row.itemsSold),
+    avgBillValue: row.bills ? round(row.sales / row.bills) : 0,
+  })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 
@@ -205,181 +225,98 @@ async function getTopProducts(
       },
     },
 
-    {
-      $sort: {
-        [sortField]: direction,
-      },
-    },
-
-    {
-      $limit: limit,
-    },
   ]);
 
-  return rows.map((r) => ({
-    product: r._id,
-    name: r.name,
-    unitsSold: r.unitsSold,
-    revenue: round(r.revenue),
-  }));
-}
-
-async function getFastMovingProducts(
-  from,
-  to,
-  limit
-) {
-  const soldRows = await Bill.aggregate([
-    {
-      $match: {
-        status: 'completed',
-        createdAt: {
-          $gte: from,
-          $lte: to,
-        },
-      },
-    },
-
-    {
-      $unwind: '$items',
-    },
-
-    {
-      $group: {
-        _id: '$items.product',
-
-        unitsSold: {
-          $sum: '$items.quantity',
-        },
-
-        name: {
-          $first: '$items.name',
-        },
-      },
-    },
-  ]);
-
-  const receivedRows = await StockBatch.aggregate([
-    {
-      $match: {
-        purchaseDate: {
-          $gte: from,
-          $lte: to,
-        },
-      },
-    },
-
-    {
-      $group: {
-        _id: '$product',
-
-        unitsReceived: {
-          $sum: '$quantity',
-        },
-      },
-    },
-  ]);
-
-  const receivedMap = new Map(
-    receivedRows.map((row) => [
-      row._id.toString(),
-      row.unitsReceived,
-    ])
-  );
-
-  const rows = soldRows
-    .map((row) => {
-      const unitsReceived =
-        receivedMap.get(row._id.toString()) || 0;
-
-      const sellThrough =
-        unitsReceived > 0
-          ? (row.unitsSold / unitsReceived) * 100
-          : 0;
-
-      return {
-        product: row._id,
-        name: row.name,
-        unitsSold: row.unitsSold,
-        unitsReceived,
-        sellThrough: round(sellThrough),
-      };
-    })
-    .filter((row) => row.unitsReceived > 0)
-    .sort(
-      (a, b) =>
-        b.sellThrough - a.sellThrough
-    )
-    .slice(0, limit);
-
-  return rows;
+  const products = new Map(rows.map((row) => [String(row._id), {
+    product: row._id,
+    name: row.name,
+    unitsSold: row.unitsSold,
+    revenue: row.revenue,
+  }]));
+  const returns = await getCompletedReturns(from, to);
+  for (const record of returns) {
+    if (record.bill?.status !== 'completed') continue;
+    for (const item of record.items) {
+      const id = String(item.product);
+      const row = products.get(id) || { product: item.product, name: item.name || 'Product', unitsSold: 0, revenue: 0 };
+      row.unitsSold -= Number(item.quantity) || 0;
+      row.revenue -= Number(item.refundAmount) || 0;
+      products.set(id, row);
+    }
+  }
+  return Array.from(products.values())
+    .sort((a, b) => direction * (a[sortField] - b[sortField]))
+    .slice(0, limit)
+    .map((row) => ({ ...row, unitsSold: Math.max(0, row.unitsSold), revenue: round(row.revenue) }));
 }
 
 async function getPurchaseAnalysis(from, to) {
-  const rows = await PurchaseOrder.aggregate([
-    {
-      $match: {
-        createdAt: {
-          $gte: from,
-          $lte: to,
-        },
-      },
-    },
-
-    {
-      $group: {
-        _id: null,
-
-        purchaseValue: {
-          $sum: {
-            $cond: [
-              { $eq: ['$status', 'received'] },
-              '$totalAmount',
-              0,
-            ],
-          },
-        },
-
-        receivedPOs: {
-          $sum: {
-            $cond: [
-              { $eq: ['$status', 'received'] },
-              1,
-              0,
-            ],
-          },
-        },
-
-        pendingPOs: {
-          $sum: {
-            $cond: [
-              { $eq: ['$status', 'pending'] },
-              1,
-              0,
-            ],
-          },
-        },
-
-        cancelledPOs: {
-          $sum: {
-            $cond: [
-              { $eq: ['$status', 'cancelled'] },
-              1,
-              0,
+  const [receivedRows, statusRows] = await Promise.all([
+    PurchaseOrder.aggregate([
+      {
+        $match: {
+          status: 'received',
+          $expr: {
+            $and: [
+              { $gte: [{ $ifNull: ['$receivedAt', '$createdAt'] }, from] },
+              { $lte: [{ $ifNull: ['$receivedAt', '$createdAt'] }, to] },
             ],
           },
         },
       },
-    },
+      { $group: { _id: null, purchaseValue: { $sum: '$totalAmount' }, receivedPOs: { $sum: 1 } } },
+    ]),
+    PurchaseOrder.aggregate([
+      { $match: { createdAt: { $gte: from, $lte: to }, status: { $in: ['pending', 'cancelled'] } } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
   ]);
+  const counts = Object.fromEntries(statusRows.map((row) => [row._id, row.count]));
 
   return {
-    purchaseValue: round(rows[0]?.purchaseValue || 0),
-    receivedPOs: rows[0]?.receivedPOs || 0,
-    pendingPOs: rows[0]?.pendingPOs || 0,
-    cancelledPOs: rows[0]?.cancelledPOs || 0,
+    purchaseValue: round(receivedRows[0]?.purchaseValue || 0),
+    receivedPOs: receivedRows[0]?.receivedPOs || 0,
+    pendingPOs: counts.pending || 0,
+    cancelledPOs: counts.cancelled || 0,
   };
 }
+
+/*
+ * Historical bill allocations carry their sale-time cost. The current batch
+ * cost is consulted only for bills written before that field was stored.
+ */
+async function getHistoricalAllocationCost(allocation) {
+  if (Number.isFinite(allocation.costPrice)) return allocation.costPrice;
+  const batch = await StockBatch.findById(allocation.batch).select('costPrice').lean();
+  return Number(batch?.costPrice) || 0;
+}
+
+async function getBillItemCogs(item) {
+  let total = 0;
+  for (const allocation of item.batches || []) {
+    total += Number(allocation.quantity) * await getHistoricalAllocationCost(allocation);
+  }
+  return total;
+}
+
+async function getCompletedReturns(from, to) {
+  return Return.find({ createdAt: { $gte: from, $lte: to } })
+    .populate({ path: 'bill', select: 'status items' })
+    .lean();
+}
+
+async function getRestockedReturnCogs(returnRecord, returnItem) {
+  if (!returnItem.restocked || !returnItem.restockedBatch || !returnRecord.bill) return 0;
+  const billItem = returnRecord.bill.items.find((item) =>
+    String(item.product) === String(returnItem.product)
+  );
+  const allocation = billItem?.batches?.find((entry) =>
+    String(entry.batch) === String(returnItem.restockedBatch)
+  );
+  if (!allocation) return 0;
+  return Number(returnItem.quantity) * await getHistoricalAllocationCost(allocation);
+}
+
 // --------------------------------------------------
 // SUMMARY
 // --------------------------------------------------
@@ -457,6 +394,10 @@ async function getSummary(from, to) {
           $sum: '$totalRefund',
         },
 
+        unitsReturned: {
+          $sum: { $sum: '$items.quantity' },
+        },
+
         count: {
           $sum: 1,
         },
@@ -495,6 +436,7 @@ async function getSummary(from, to) {
 
   const r = refundRows[0] || {
     refunds: 0,
+    unitsReturned: 0,
     count: 0,
   };
 
@@ -508,7 +450,7 @@ async function getSummary(from, to) {
 
     billCount: s.bills,
 
-    itemsSold: s.itemsSold,
+    itemsSold: Math.max(0, s.itemsSold - r.unitsReturned),
 
     avgBillValue: s.bills
       ? round(s.sales / s.bills)
@@ -532,9 +474,11 @@ async function getSupplierPurchaseAnalysis(from, to, limit) {
     {
       $match: {
         status: 'received',
-        createdAt: {
-          $gte: from,
-          $lte: to,
+        $expr: {
+          $and: [
+            { $gte: [{ $ifNull: ['$receivedAt', '$createdAt'] }, from] },
+            { $lte: [{ $ifNull: ['$receivedAt', '$createdAt'] }, to] },
+          ],
         },
       },
     },
@@ -611,18 +555,15 @@ async function getProfitability(from, to) {
 
   for (const bill of bills) {
     for (const item of bill.items) {
-      for (const batch of item.batches || []) {
-        const stockBatch =
-          await StockBatch.findById(batch.batch)
-            .select('costPrice')
-            .lean();
+      cogs += await getBillItemCogs(item);
+    }
+  }
 
-        if (stockBatch) {
-          cogs +=
-            batch.quantity *
-            (stockBatch.costPrice || 0);
-        }
-      }
+  const returns = await getCompletedReturns(from, to);
+  for (const returnRecord of returns) {
+    if (returnRecord.bill?.status !== 'completed') continue;
+    for (const item of returnRecord.items) {
+      cogs -= await getRestockedReturnCogs(returnRecord, item);
     }
   }
 
@@ -667,21 +608,8 @@ async function getProductProfitability(
 
   for (const bill of bills) {
     for (const item of bill.items) {
-      let revenue = item.lineTotal || 0;
-      let cogs = 0;
-
-      for (const batch of item.batches || []) {
-        const stockBatch =
-          await StockBatch.findById(batch.batch)
-            .select('costPrice')
-            .lean();
-
-        if (stockBatch) {
-          cogs +=
-            batch.quantity *
-            (stockBatch.costPrice || 0);
-        }
-      }
+      const revenue = item.lineTotal || 0;
+      const cogs = await getBillItemCogs(item);
 
       const productId = item.product.toString();
 
@@ -701,6 +629,27 @@ async function getProductProfitability(
       product.unitsSold += item.quantity;
       product.revenue += revenue;
       product.cogs += cogs;
+    }
+  }
+
+  const returns = await getCompletedReturns(from, to);
+  for (const returnRecord of returns) {
+    if (returnRecord.bill?.status !== 'completed') continue;
+    for (const item of returnRecord.items) {
+      const productId = String(item.product);
+      if (!productMap.has(productId)) {
+        productMap.set(productId, {
+          product: item.product,
+          name: item.name || 'Product',
+          unitsSold: 0,
+          revenue: 0,
+          cogs: 0,
+        });
+      }
+      const product = productMap.get(productId);
+      product.unitsSold -= Number(item.quantity) || 0;
+      product.revenue -= Number(item.refundAmount) || 0;
+      product.cogs -= await getRestockedReturnCogs(returnRecord, item);
     }
   }
 
@@ -753,18 +702,18 @@ async function getInventoryHealth() {
     const quantity = batch.remainingQuantity || 0;
     const cost = batch.costPrice || 0;
 
-    inventoryValue += quantity * cost;
-    totalUnits += quantity;
-
     if (
       batch.expiryDate &&
       new Date(batch.expiryDate) < now
     ) {
       expiredUnits += quantity;
-    } else if (
-      batch.expiryDate &&
-      batch.product?.expiryAlertDays
-    ) {
+      continue;
+    }
+
+    inventoryValue += quantity * cost;
+    totalUnits += quantity;
+
+    if (batch.expiryDate && batch.product?.expiryAlertDays) {
       const alertDate = new Date();
       alertDate.setDate(
         alertDate.getDate() +
@@ -790,7 +739,8 @@ async function getInventoryHealth() {
       .filter(
         (batch) =>
           batch.product?._id?.toString() ===
-          product._id.toString()
+          product._id.toString() &&
+          (!batch.expiryDate || new Date(batch.expiryDate) >= now)
       )
       .reduce(
         (total, batch) =>
@@ -983,43 +933,6 @@ exports.getTopProducts = async (req, res) => {
   }
 };
 
-exports.getFastMovingProducts = async (req, res) => {
-  try {
-    const range = getDateRange(req.query);
-
-    if (!range) {
-      return res.status(400).json({
-        message: 'Use dates like 2026-10-01',
-      });
-    }
-
-    const requestedLimit =
-      parseInt(req.query.limit) || 10;
-
-    const limit = Math.min(
-      Math.max(requestedLimit, 1),
-      50
-    );
-
-    const data = await getFastMovingProducts(
-      range.from,
-      range.to,
-      limit
-    );
-
-    res.json({
-      from: range.from,
-      to: range.to,
-      data,
-    });
-  } catch (err) {
-    res.status(500).json({
-      message: err.message,
-    });
-  }
-};
-
-
 // --------------------------------------------------
 // REVENUE SUMMARY
 // --------------------------------------------------
@@ -1158,11 +1071,49 @@ exports.getSalesByCategory = async (req, res) => {
       },
     ]);
 
-    const data = rows.map((r) => ({
-      category: r._id,
-      unitsSold: r.unitsSold,
-      revenue: round(r.revenue),
-    }));
+    const byCategory = new Map(rows.map((row) => [String(row._id), {
+      category: row._id,
+      unitsSold: row.unitsSold,
+      revenue: row.revenue,
+    }]));
+    const returnedRows = await Return.aggregate([
+      { $match: { createdAt: { $gte: range.from, $lte: range.to } } },
+      { $lookup: { from: Bill.collection.name, localField: 'bill', foreignField: '_id', as: 'billInfo' } },
+      { $unwind: '$billInfo' },
+      { $match: { 'billInfo.status': 'completed' } },
+      { $unwind: '$items' },
+      {
+        $lookup: {
+          from: Product.collection.name,
+          localField: 'items.product',
+          foreignField: '_id',
+          as: 'productInfo',
+        },
+      },
+      { $unwind: { path: '$productInfo', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: { $ifNull: ['$productInfo.category', 'Uncategorized'] },
+          unitsReturned: { $sum: '$items.quantity' },
+          refunds: { $sum: '$items.refundAmount' },
+        },
+      },
+    ]);
+    for (const row of returnedRows) {
+      const id = String(row._id);
+      const category = byCategory.get(id) || { category: row._id, unitsSold: 0, revenue: 0 };
+      category.unitsSold -= row.unitsReturned;
+      category.revenue -= row.refunds;
+      byCategory.set(id, category);
+    }
+
+    const data = Array.from(byCategory.values())
+      .map((row) => ({
+        category: row.category,
+        unitsSold: Math.max(0, row.unitsSold),
+        revenue: round(row.revenue),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
     res.json({
       from: range.from,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Products.css'
@@ -64,6 +64,8 @@ const Products = () => {
   }
 
   useEffect(() => {
+    // These async loaders update state after their API requests complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProducts()
     fetchCategories()
   }, [])
@@ -180,7 +182,7 @@ const handleDeleteProduct = async (productId) => {
   try {
     const token = localStorage.getItem('token')
 
-    await axios.delete(
+    const response = await axios.delete(
       `http://localhost:5000/api/products/${productId}`,
       {
         headers: {
@@ -189,7 +191,7 @@ const handleDeleteProduct = async (productId) => {
       }
     )
 
-    alert('Product deleted successfully')
+    alert(response.data.message || 'Product deleted successfully')
 
     fetchProducts()
 

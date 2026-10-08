@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import './Alerts.css'
 
@@ -9,11 +9,7 @@ const Alerts = () => {
 
   const token = localStorage.getItem('token')
 
-  useEffect(() => {
-    fetchAlerts()
-  }, [])
-
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/alerts',
@@ -35,7 +31,13 @@ const Alerts = () => {
           'Failed to load alerts'
       )
     }
-  }
+  }, [token])
+
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAlerts()
+  }, [fetchAlerts])
 
   return (
     <div className="alerts-page">

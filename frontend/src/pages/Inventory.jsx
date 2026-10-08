@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Inventory.css'
@@ -40,16 +40,23 @@ const [expiryFilter, setExpiryFilter] = useState('all')
     try {
       const token = localStorage.getItem('token')
 
-      const response = await axios.get(
-        'http://localhost:5000/api/stock',
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
+      const allBatches = []
+      let page = 1
+      let pages = 1
+      do {
+        const response = await axios.get(
+          'http://localhost:5000/api/stock',
+          {
+            params: { status: 'all', page, limit: 100 },
+            headers: { Authorization: `Bearer ${token}` }
           }
-        }
-      )
+        )
+        allBatches.push(...(response.data.data || []))
+        pages = response.data.pages || 1
+        page += 1
+      } while (page <= pages)
 
-      setBatches(response.data.data || response.data)
+      setBatches(allBatches)
     } catch (error) {
       console.error('Error fetching stock:', error)
     }
@@ -94,6 +101,8 @@ const [expiryFilter, setExpiryFilter] = useState('all')
   }
 
   useEffect(() => {
+    // These async loaders update state after their API requests complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBatches()
     fetchProducts()
     fetchSuppliers()
@@ -239,8 +248,11 @@ const [expiryFilter, setExpiryFilter] = useState('all')
   const totalBatches = batches.length
 
   const totalAvailable = batches.reduce(
-    (total, batch) =>
-      total + Number(batch.remainingQuantity || 0),
+    (total, batch) => total + (
+      batch.expiryDate && new Date(batch.expiryDate) < new Date()
+        ? 0
+        : Number(batch.remainingQuantity || 0)
+    ),
     0
   )
 
@@ -251,6 +263,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 
   const expiredBatches = batches.filter(
     (batch) =>
+      batch.remainingQuantity > 0 &&
       batch.expiryDate &&
       new Date(batch.expiryDate) < new Date()
   ).length
@@ -268,10 +281,11 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 
   const matchesStatus =
     stockStatus === 'all' ||
-    (stockStatus === 'available' && batch.remainingQuantity > 0) ||
+    (stockStatus === 'available' && batch.remainingQuantity > 0 && (!batch.expiryDate || new Date(batch.expiryDate) >= new Date())) ||
     (stockStatus === 'depleted' && batch.remainingQuantity === 0) ||
     (
       stockStatus === 'expired' &&
+      batch.remainingQuantity > 0 &&
       batch.expiryDate &&
       new Date(batch.expiryDate) < new Date()
     )
@@ -283,7 +297,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
       batch.expiryDate &&
       new Date(batch.expiryDate) >= new Date() &&
       new Date(batch.expiryDate) <=
-        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000)
     )
 
   return (

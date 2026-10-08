@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './PurchaseOrder.css'
@@ -27,17 +27,11 @@ const PurchaseOrder = () => {
 const [receivingOrder, setReceivingOrder] = useState(null)
 const [receiveItems, setReceiveItems] = useState([])
 
-  const headers = {
+  const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`
-  }
+  }), [token])
 
-  useEffect(() => {
-    fetchOrders()
-    fetchSuppliers()
-    fetchProducts()
-  }, [])
-
-const fetchOrders = async () => {
+const fetchOrders = useCallback(async () => {
   try {
     const response = await axios.get(
       'http://localhost:5000/api/purchase-orders',
@@ -48,8 +42,8 @@ const fetchOrders = async () => {
   } catch (error) {
     console.error(error)
   }
-}
-  const fetchSuppliers = async () => {
+}, [headers])
+  const fetchSuppliers = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/suppliers?active=true',
@@ -60,9 +54,9 @@ const fetchOrders = async () => {
     } catch (error) {
       console.error(error)
     }
-  }
+  }, [headers])
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/products',
@@ -73,7 +67,15 @@ const fetchOrders = async () => {
     } catch (error) {
       console.error(error)
     }
-  }
+  }, [headers])
+
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchOrders()
+    fetchSuppliers()
+    fetchProducts()
+  }, [fetchOrders, fetchSuppliers, fetchProducts])
 
   const addItem = () => {
     setItems([

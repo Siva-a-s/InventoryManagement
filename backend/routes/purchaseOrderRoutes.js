@@ -9,6 +9,8 @@ const c = require('../controllers/purchaseorderController');
 
 router.use(protect);
 
+router.get('/summary', c.getPurchaseOrderSummary);
+
 router
   .route('/')
   .get(c.getPurchaseOrders)
@@ -19,7 +21,7 @@ router
   .get(c.getPurchaseOrder)
   .put(authorize('owner'), c.updatePurchaseOrder);
 
-router.patch('/:id/receive', c.receivePurchaseOrder);
+router.patch('/:id/receive', authorize('owner', 'staff'), c.receivePurchaseOrder);
 
 router.patch(
   '/:id/cancel',

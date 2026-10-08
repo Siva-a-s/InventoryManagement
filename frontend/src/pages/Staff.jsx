@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import './Staff.css'
 
@@ -14,15 +14,11 @@ const Staff = () => {
 
   const token = localStorage.getItem('token')
 
-  const headers = {
+  const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`,
-  }
+  }), [token])
 
-  useEffect(() => {
-    fetchStaff()
-  }, [])
-
-  const fetchStaff = async () => {
+  const fetchStaff = useCallback(async () => {
     try {
       const response = await axios.get(
         'http://localhost:5000/api/auth/staff',
@@ -39,7 +35,13 @@ const Staff = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [headers])
+
+  useEffect(() => {
+    // Initial API loading is an external synchronization effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStaff()
+  }, [fetchStaff])
 
   const handleChange = (e) => {
     setForm({
@@ -83,12 +85,12 @@ const Staff = () => {
     if (!confirmDelete) return
 
     try {
-      await axios.delete(
+      const response = await axios.delete(
         `http://localhost:5000/api/auth/staff/${id}`,
         { headers }
       )
 
-      alert('Staff removed successfully')
+      alert(response.data.message || 'Staff removed successfully')
 
       fetchStaff()
     } catch (error) {

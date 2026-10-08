@@ -31,18 +31,17 @@ const productSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
-    // models/Product.js — add this field
-reorderLevel: {
-  type: Number,
-  default: 10,
-  min: 0,
-},
-// models/Product.js — add next to reorderLevel
-expiryAlertDays: {
-  type: Number,
-  default: 30,   // fallback if the owner doesn't set one
-  min: 1,
-},
+    reorderLevel: {
+      type: Number,
+      default: 10,
+      min: 0,
+    },
+    expiryAlertDays: {
+      type: Number,
+      default: 30,
+      min: 1,
+    },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

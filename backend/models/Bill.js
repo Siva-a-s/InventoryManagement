@@ -16,6 +16,7 @@ const billItemSchema = new mongoose.Schema(
         _id: false,
         batch: { type: mongoose.Schema.Types.ObjectId, ref: 'StockBatch', required: true },
         quantity: { type: Number, required: true },
+        costPrice: { type: Number, min: 0 },
       },
     ],
   },
