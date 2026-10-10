@@ -70,7 +70,9 @@ exports.recordWastage = async (req, res) => {
           totalCost,
           notes,
           automatic: false,
+          sourceType: 'manual',
           recordedBy: req.user._id,
+          recordedByName: req.user.name,
         },
       ],
       { session }
@@ -136,7 +138,9 @@ exports.writeOffExpired = async (req, res) => {
             totalCost,
             notes: 'Auto write-off of expired stock',
             automatic: true,
+            sourceType: 'expired',
             recordedBy: req.user._id,
+            recordedByName: req.user.name,
           },
         ],
         { session }
@@ -240,7 +244,8 @@ exports.getWastage = async (req, res) => {
       .limit(limit)
       .populate('product', 'name unit')
       .populate('batch', 'batchNumber expiryDate costPrice')
-      .populate('recordedBy', 'name');
+      .populate('recordedBy', 'name')
+      .populate('sourceReturn', 'returnNumber');
 
     const count = await Wastage.countDocuments(filter);
 

@@ -62,14 +62,16 @@ exports.getCategorySummary = async (req, res) => {
 
     // 1. all categories and all products
     const categories = await Category.find().sort({ name: 1 });
-    const products = await Product.find().select("category");
+    const products = await Product.find().select("category isActive");
+    const activeProductIds = products.filter((product) => product.isActive !== false).map((product) => product._id);
 
     // 2. sellable stock per product, from the batches
     const stock = await StockBatch.aggregate([
       {
         $match: {
           remainingQuantity: { $gt: 0 },
-          $or: [{ expiryDate: null }, { expiryDate: { $gte: now } }],
+          product: { $in: activeProductIds },
+          $or: [{ expiryDate: null }, { expiryDate: { $gt: now } }],
         },
       },
       { $group: { _id: "$product", qty: { $sum: "$remainingQuantity" } } },

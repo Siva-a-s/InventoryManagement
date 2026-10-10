@@ -24,6 +24,7 @@ exports.addProduct = async (req, res) => {
       reorderLevel, 
       expiryAlertDays,
       createdBy: req.user.id,
+      createdByName: req.user.name,
     });
 
     res.status(201).json(product);
@@ -40,8 +41,23 @@ exports.getProducts = async (req, res) => {
     }
     const products = await Product.find(filter)
       .populate("category", "name")
+      .populate("createdBy", "name")
+      .populate("updatedBy", "name")
       .sort({ createdAt: -1 });
     res.json(products);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getProductById = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate('category', 'name')
+      .populate('createdBy', 'name')
+      .populate('updatedBy', 'name');
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    res.json(product);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -50,10 +66,15 @@ exports.getProducts = async (req, res) => {
 // @desc Update product (Owner only)
 exports.updateProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const allowedFields = ['name', 'category', 'unit', 'price', 'barcode', 'reorderLevel', 'expiryAlertDays', 'isActive'];
+    const updates = Object.fromEntries(allowedFields
+      .filter((field) => req.body[field] !== undefined)
+      .map((field) => [field, req.body[field]]));
+    updates.updatedBy = req.user._id;
+    updates.updatedByName = req.user.name;
+    const product = await Product.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
+      .populate('createdBy', 'name')
+      .populate('updatedBy', 'name');
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json(product);
   } catch (err) {

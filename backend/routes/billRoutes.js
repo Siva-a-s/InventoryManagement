@@ -7,6 +7,8 @@ const authorize = require('../middleware/roleCheck');
 const bill = require('../controllers/billController');
 
 // Owner + Staff/Cashier
+router.post('/razorpay/order', protect, authorize('owner', 'staff'), bill.createRazorpayOrder);
+router.post('/razorpay/verify', protect, authorize('owner', 'staff'), bill.verifyRazorpayPayment);
 router.post('/preview', protect, authorize('owner', 'staff'), bill.previewBill);
 router.post('/', protect, authorize('owner', 'staff'), bill.createBill);
 router.get('/', protect, authorize('owner', 'staff'), bill.getBills);

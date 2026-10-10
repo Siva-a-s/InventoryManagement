@@ -1,0 +1,11 @@
+.toast-stack { position: fixed; z-index: 3000; top: 20px; right: 20px; display: grid; gap: 10px; width: min(390px, calc(100vw - 32px)); pointer-events: none; }
+.app-toast { display: flex; align-items: center; gap: 12px; padding: 14px 12px 14px 15px; border: 1px solid #dfe7ec; border-left: 4px solid #13815f; border-radius: 11px; background: #fff; color: #1d2a35; box-shadow: 0 12px 35px #122b3a26; font-size: 14px; line-height: 1.45; pointer-events: auto; outline-offset: 3px; }
+.app-toast span { flex: 1; }
+.app-toast > button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; background: transparent; color: #6b7c8d; }
+.toast-success > svg { color: #13815f; } .toast-error { border-left-color: #c2413a; } .toast-error > svg { color: #c2413a; } .toast-warning { border-left-color: #bd7a08; } .toast-warning > svg { color: #bd7a08; } .toast-info { border-left-color: #2877a9; } .toast-info > svg { color: #2877a9; }
+.app-dialog-backdrop { position: fixed; z-index: 3100; inset: 0; display: grid; place-items: center; padding: 20px; background: #101c25a3; }
+.app-dialog { width: min(440px, 100%); padding: 24px; border-radius: 14px; background: white; box-shadow: 0 20px 55px #0003; }
+.app-dialog h2 { margin: 0 0 10px; font-size: 20px; } .app-dialog p { color: #536474; line-height: 1.5; }
+.app-dialog textarea { width: 100%; resize: vertical; padding: 10px; border: 1px solid #d6e0e6; border-radius: 8px; }
+.app-dialog > div { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; } .app-dialog button { padding: 9px 14px; border: 1px solid #13815f; border-radius: 8px; background: #13815f; color: white; } .app-dialog button.dialog-cancel { border-color: #d6e0e6; background: white; color: #354654; }
+@media (max-width: 520px) { .toast-stack { top: 10px; right: 10px; width: calc(100vw - 20px); } }

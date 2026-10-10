@@ -24,6 +24,7 @@ const purchaseOrderSchema = new Schema(
     notes: String,
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     receivedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    receivedByName: { type: String, trim: true },
     receivedAt: Date,
     cancelledAt: Date,
     cancelReason: String,

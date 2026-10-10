@@ -6,6 +6,9 @@ const StockBatch = require('../models/StockBatch');
 const Counter = require('../models/Counter');
 const Discount = require('../models/Discount');
 const Return = require('../models/Return');
+const RazorpayOrder = require('../models/RazorpayOrder');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -38,13 +41,15 @@ async function nextBillNumber() {
 }
 
 // Sellable batches: not expired, has stock, earliest expiry first
-async function getSellableBatches(productId) {
+async function getSellableBatches(productId, session) {
   const now = new Date();
-  const batches = await StockBatch.find({
+  const query = StockBatch.find({
     product: productId,
     remainingQuantity: { $gt: 0 },
     $or: [{ expiryDate: null }, { expiryDate: { $gt: now } }],
   });
+  if (session) query.session(session);
+  const batches = await query;
 
   batches.sort((a, b) => {
     const ea = a.expiryDate ? a.expiryDate.getTime() : Infinity;
@@ -131,6 +136,237 @@ async function calculateBill(items) {
   return { lines, subtotal, discount, total: round2(subtotal - discount) };
 }
 
+const getRazorpayClient = () => {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) fail(503, 'Razorpay is not configured on the server');
+  return { client: new Razorpay({ key_id: keyId, key_secret: keySecret }), keyId, keySecret };
+};
+
+const validateRazorpaySignature = (orderId, paymentId, signature, secret) => {
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(`${orderId}|${paymentId}`)
+    .digest();
+  let supplied;
+  try {
+    supplied = Buffer.from(signature, 'hex');
+  } catch {
+    return false;
+  }
+  return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+};
+
+async function allocateStock(lines, session, insufficientStockStatus = 409) {
+  const batchesPerLine = [];
+
+  for (const line of lines) {
+    const batches = await getSellableBatches(line.product, session);
+
+    const available = batches.reduce((sum, batch) => sum + batch.remainingQuantity, 0);
+    if (available < line.quantity) {
+      fail(insufficientStockStatus, `Not enough stock for ${line.name}. Available: ${available}, requested: ${line.quantity}`);
+    }
+    batchesPerLine.push(batches);
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    let remaining = lines[i].quantity;
+    lines[i].batches = [];
+
+    for (const batch of batchesPerLine[i]) {
+      if (remaining <= 0) break;
+      const take = Math.min(batch.remainingQuantity, remaining);
+      const result = await StockBatch.updateOne(
+        { _id: batch._id, remainingQuantity: { $gte: take } },
+        { $inc: { remainingQuantity: -take } },
+        { session }
+      );
+      if (result.modifiedCount !== 1) {
+        fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
+      }
+      lines[i].batches.push({
+        batch: batch._id,
+        quantity: take,
+        costPrice: Number(batch.costPrice) || 0,
+      });
+      remaining -= take;
+    }
+
+    if (remaining > 0) fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
+  }
+}
+
+// POST /api/bills/razorpay/order
+exports.createRazorpayOrder = async (req, res) => {
+  try {
+    const { items, customerName, customerPhone } = req.body;
+    const { lines, subtotal, discount, total } = await calculateBill(items);
+    const amountPaise = Math.round(total * 100);
+    if (!Number.isSafeInteger(amountPaise) || amountPaise < 100) {
+      fail(400, 'Razorpay orders must total at least INR 1.00');
+    }
+
+    // Check current sellable stock without reserving or deducting it.
+    for (const line of lines) {
+      const batches = await getSellableBatches(line.product);
+      const available = batches.reduce((sum, batch) => sum + batch.remainingQuantity, 0);
+      if (available < line.quantity) {
+        fail(400, `Not enough stock for ${line.name}. Available: ${available}, requested: ${line.quantity}`);
+      }
+    }
+
+    const { client, keyId } = getRazorpayClient();
+    const razorpayOrder = await client.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt: `sf_${crypto.randomBytes(12).toString('hex')}`,
+    });
+
+    await RazorpayOrder.create({
+      razorpayOrderId: razorpayOrder.id,
+      user: req.user._id,
+      items: lines.map(({ batches: _batches, ...line }) => line),
+      subtotal,
+      discount,
+      total,
+      amountPaise,
+      customerName,
+      customerPhone,
+    });
+
+    res.status(201).json({
+      orderId: razorpayOrder.id,
+      amount: amountPaise,
+      currency: 'INR',
+      keyId,
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message });
+    // Do not return or log Razorpay request details or credentials.
+    return res.status(502).json({ message: 'Unable to create Razorpay order. Please retry.' });
+  }
+};
+
+// POST /api/bills/razorpay/verify
+exports.verifyRazorpayPayment = async (req, res) => {
+  const { orderId, paymentId, signature } = req.body || {};
+  if (![orderId, paymentId, signature].every((value) => typeof value === 'string' && value.length > 0)) {
+    return res.status(400).json({ message: 'orderId, paymentId and signature are required' });
+  }
+
+  let pending;
+  let session;
+  try {
+    pending = await RazorpayOrder.findOne({ razorpayOrderId: orderId, user: req.user._id });
+    if (!pending) fail(404, 'Pending Razorpay order not found for this user');
+
+    const { client, keySecret } = getRazorpayClient();
+    if (!validateRazorpaySignature(pending.razorpayOrderId, paymentId, signature, keySecret)) {
+      fail(400, 'Razorpay payment signature is invalid');
+    }
+    if (pending.razorpayPaymentId && pending.razorpayPaymentId !== paymentId) {
+      fail(409, 'A different payment is already associated with this order');
+    }
+
+    if (pending.status !== 'paid') {
+      const [gatewayOrder, payment] = await Promise.all([
+        client.orders.fetch(pending.razorpayOrderId),
+        client.payments.fetch(paymentId),
+      ]);
+      if (
+        gatewayOrder.id !== pending.razorpayOrderId ||
+        gatewayOrder.amount !== pending.amountPaise ||
+        gatewayOrder.currency !== 'INR' ||
+        payment.order_id !== pending.razorpayOrderId ||
+        payment.amount !== pending.amountPaise ||
+        payment.currency !== 'INR' ||
+        payment.status !== 'captured' ||
+        gatewayOrder.status !== 'paid'
+      ) {
+        fail(400, 'Razorpay payment is not captured for the expected order and amount');
+      }
+
+      if (pending.status === 'pending') {
+        const updated = await RazorpayOrder.findOneAndUpdate(
+          { _id: pending._id, status: 'pending' },
+          { $set: { status: 'payment_verified', razorpayPaymentId: paymentId, paymentVerifiedAt: new Date() } },
+          { new: true }
+        );
+        if (!updated) {
+          pending = await RazorpayOrder.findById(pending._id);
+          if (pending?.razorpayPaymentId !== paymentId) fail(409, 'This order is being verified with another payment');
+        } else {
+          pending = updated;
+        }
+      }
+
+      if (pending.status === 'payment_verified') {
+        session = await mongoose.startSession();
+        let completedBill;
+        await session.withTransaction(async () => {
+          const current = await RazorpayOrder.findOne({
+            _id: pending._id,
+            user: req.user._id,
+            status: 'payment_verified',
+            razorpayPaymentId: paymentId,
+          }).session(session);
+
+          if (!current) {
+            const alreadyPaid = await RazorpayOrder.findById(pending._id).session(session);
+            if (alreadyPaid?.status === 'paid' && String(alreadyPaid.razorpayPaymentId) === paymentId) {
+              completedBill = await Bill.findById(alreadyPaid.bill).session(session);
+              return;
+            }
+            fail(409, 'Payment order is already being completed or is not payable');
+          }
+
+          const billItems = current.items.map((item) => ({ ...item.toObject(), batches: [] }));
+          await allocateStock(billItems, session);
+          const billNumber = await nextBillNumber();
+          const [bill] = await Bill.create([{
+            billNumber,
+            items: billItems,
+            subtotal: current.subtotal,
+            discount: current.discount,
+            total: current.total,
+            paymentMethod: 'razorpay',
+            amountPaid: current.total,
+            changeGiven: 0,
+            customerName: current.customerName,
+            customerPhone: current.customerPhone,
+            cashier: req.user._id,
+            cashierName: req.user.name,
+            razorpayOrderId: current.razorpayOrderId,
+            razorpayPaymentId: paymentId,
+          }], { session });
+
+          current.status = 'paid';
+          current.bill = bill._id;
+          await current.save({ session });
+          completedBill = bill;
+        });
+
+        if (completedBill) {
+          return res.status(200).json({ message: 'Payment verified and bill generated', bill: completedBill });
+        }
+      }
+    }
+
+    if (pending.status === 'paid' && pending.bill) {
+      const bill = await Bill.findById(pending.bill);
+      return res.json({ message: 'Payment was already verified', bill });
+    }
+    return res.status(409).json({ message: 'Payment is verified; bill completion is pending. Retry verification or contact the owner.' });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message });
+    // A captured payment remains retryable if stock allocation or the database fails.
+    return res.status(500).json({ message: 'Unable to verify or complete the Razorpay payment. Retry verification or contact the owner.' });
+  } finally {
+    if (session) await session.endSession();
+  }
+};
+
 // POST /api/bills/preview   (nothing is saved, stock is not changed)
 exports.previewBill = async (req, res) => {
   try {
@@ -188,67 +424,8 @@ exports.createBill = async (req, res) => {
       changeGiven = round2(paid - total);
     }
 
-    // Check stock for ALL products before changing anything
-    const batchesPerLine = [];
-
-    for (const line of lines) {
-      const batches = await getSellableBatches(line.product);
-
-      const available = batches.reduce(
-        (sum, batch) => sum + batch.remainingQuantity,
-        0
-      );
-
-      if (available < line.quantity) {
-        fail(
-          400,
-          `Not enough stock for ${line.name}. Available: ${available}, requested: ${line.quantity}`
-        );
-      }
-
-      batchesPerLine.push(batches);
-    }
-
-    // Reduce stock using FEFO
-    for (let i = 0; i < lines.length; i++) {
-      let remaining = lines[i].quantity;
-
-      for (const batch of batchesPerLine[i]) {
-        if (remaining <= 0) break;
-
-        const take = Math.min(
-          batch.remainingQuantity,
-          remaining
-        );
-
-        const stockUpdate = await StockBatch.updateOne(
-          {
-            _id: batch._id,
-            remainingQuantity: { $gte: take }
-          },
-          {
-            $inc: { remainingQuantity: -take }
-          },
-          { session }
-        );
-
-        if (stockUpdate.modifiedCount !== 1) {
-          fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
-        }
-
-        lines[i].batches.push({
-          batch: batch._id,
-          quantity: take,
-          costPrice: Number(batch.costPrice) || 0,
-        });
-
-        remaining -= take;
-      }
-
-      if (remaining > 0) {
-        fail(409, `Stock changed while billing ${lines[i].name}. Please retry.`);
-      }
-    }
+    // Reduce stock using the same transactional FEFO allocator as Razorpay billing.
+    await allocateStock(lines, session, 400);
 
     // Create bill inside the same transaction
     const billNumber = await nextBillNumber();
@@ -266,7 +443,8 @@ exports.createBill = async (req, res) => {
           changeGiven,
           customerName,
           customerPhone,
-          cashier: req.user._id
+          cashier: req.user._id,
+          cashierName: req.user.name
         }
       ],
       { session }
@@ -350,6 +528,10 @@ exports.cancelBill = async (req, res) => {
 
     if (bill.status === 'cancelled') {
       fail(400, 'Bill is already cancelled');
+    }
+
+    if (bill.paymentMethod === 'razorpay') {
+      fail(409, 'Razorpay bills cannot be cancelled until a refund has been completed.');
     }
 
     if (await Return.exists({ bill: bill._id }).session(session)) {

@@ -1,4 +1,6 @@
-﻿import { useEffect, useState } from 'react'
+import { confirmAction } from '../components/notifications'
+import { notify } from '../components/notifications'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Suppliers.css'
@@ -105,13 +107,13 @@ const Suppliers = () => {
         }
       )
 
-      alert('Supplier added successfully')
+      notify('Supplier added successfully')
 
       resetForm()
       fetchSuppliers()
     } catch (error) {
       console.error('Error adding supplier:', error)
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to add supplier'
       )
@@ -141,13 +143,13 @@ const Suppliers = () => {
         }
       )
 
-      alert('Supplier updated successfully')
+      notify('Supplier updated successfully')
 
       resetForm()
       fetchSuppliers()
     } catch (error) {
       console.error('Error updating supplier:', error)
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to update supplier'
       )
@@ -155,7 +157,7 @@ const Suppliers = () => {
   }
 
   const handleDeleteSupplier = async (supplierId) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       'Are you sure you want to delete this supplier?'
     )
 
@@ -173,12 +175,12 @@ const Suppliers = () => {
         }
       )
 
-      alert('Supplier deleted successfully')
+      notify('Supplier deleted successfully')
 
       fetchSuppliers()
     } catch (error) {
       console.error('Error deleting supplier:', error)
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to delete supplier'
       )

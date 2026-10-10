@@ -15,10 +15,12 @@ import Reports from './pages/Reports'
 import Staff from './pages/Staff'
 
 import Layout from './components/Layout'
+import NotificationHost from './components/NotificationHost'
 
 const App = () => {
   return (
     <BrowserRouter>
+      <NotificationHost />
 
       <Routes>
 

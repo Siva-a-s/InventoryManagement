@@ -4,6 +4,12 @@ const { Schema } = mongoose;
 
 const REASONS = ['damaged', 'expired', 'wrong_item', 'quality_issue', 'changed_mind', 'other'];
 
+const returnBatchSchema = new Schema({
+  batch: { type: Schema.Types.ObjectId, ref: 'StockBatch' },
+  quantity: { type: Number, min: 1 },
+  unitCost: { type: Number, min: 0 },
+}, { _id: false });
+
 const returnItemSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -14,9 +20,22 @@ const returnItemSchema = new Schema(
     reason: { type: String, enum: REASONS, default: 'other' },
     restocked: { type: Boolean, default: false },
     restockedBatch: { type: Schema.Types.ObjectId, ref: 'StockBatch' },
+    originalBatches: { type: [returnBatchSchema], default: undefined },
+    wastageWrittenOff: { type: Boolean, default: false },
+    wastageWrittenOffAt: Date,
+    wastageWrittenOffBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { _id: false }
 );
+
+const razorpayRefundSchema = new Schema({
+  idempotencyKey: { type: String, required: true },
+  amount: { type: Number, required: true, min: 1 },
+  status: { type: String, enum: ['pending', 'processed', 'failed'], required: true },
+  refundId: String,
+  requestedAt: { type: Date, required: true },
+  updatedAt: { type: Date, required: true },
+}, { _id: false });
 
 const returnSchema = new Schema(
   {
@@ -24,9 +43,11 @@ const returnSchema = new Schema(
     bill: { type: Schema.Types.ObjectId, ref: 'Bill', required: true, index: true },
     items: [returnItemSchema],
     totalRefund: { type: Number, required: true },
-    refundMethod: { type: String, enum: ['cash', 'upi', 'card', 'store_credit'], default: 'cash' },
+    refundMethod: { type: String, enum: ['cash', 'upi', 'card', 'store_credit', 'razorpay'], default: 'cash' },
+    razorpayRefund: { type: razorpayRefundSchema, default: undefined },
     note: String,
     processedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    processedByName: { type: String, trim: true },
   },
   { timestamps: true }
 );

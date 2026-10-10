@@ -1,4 +1,6 @@
-﻿import { useEffect, useState } from 'react'
+import { confirmAction } from '../components/notifications'
+import { notify } from '../components/notifications'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Products.css'
@@ -18,6 +20,7 @@ const Products = () => {
   const [reorderLevel, setReorderLevel] = useState(10)
   const [expiryAlertDays, setExpiryAlertDays] = useState(30)
   const [searchProduct, setSearchProduct] = useState('')
+  const [viewingProduct, setViewingProduct] = useState(null)
 
   const fetchProducts = async () => {
     try {
@@ -54,8 +57,6 @@ const Products = () => {
         }
       )
 
-      console.log('Categories response:', response.data)
-
       setCategories(response.data.data || response.data)
 
     } catch (error) {
@@ -64,7 +65,7 @@ const Products = () => {
   }
 
   useEffect(() => {
-    // These async loaders update state after their API requests complete.
+    // Fetchers update state only after their network requests complete.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProducts()
     fetchCategories()
@@ -96,7 +97,7 @@ const Products = () => {
         }
       )
 
-      alert('Product added successfully')
+      notify('Product added successfully')
 
       setName('')
       setCategory('')
@@ -114,7 +115,7 @@ const Products = () => {
 
       console.error('Error adding product:', error)
 
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to add product'
       )
@@ -145,7 +146,7 @@ const Products = () => {
       }
     )
 
-    alert('Product updated successfully')
+    notify('Product updated successfully')
 
     setEditingProduct(null)
     setShowForm(false)
@@ -163,7 +164,7 @@ const Products = () => {
   } catch (error) {
     console.error('Error updating product:', error)
 
-    alert(
+    notify(
       error.response?.data?.message ||
       'Failed to update product'
     )
@@ -171,7 +172,7 @@ const Products = () => {
 }
 
 const handleDeleteProduct = async (productId) => {
-  const confirmed = window.confirm(
+  const confirmed = await confirmAction(
     'Are you sure you want to delete this product?'
   )
 
@@ -191,14 +192,14 @@ const handleDeleteProduct = async (productId) => {
       }
     )
 
-    alert(response.data.message || 'Product deleted successfully')
+    notify(response.data.message || 'Product deleted successfully')
 
     fetchProducts()
 
   } catch (error) {
     console.error('Error deleting product:', error)
 
-    alert(
+    notify(
       error.response?.data?.message ||
       'Failed to delete product'
     )
@@ -405,6 +406,7 @@ const filteredProducts = products.filter((product) =>
                 <td>{product.expiryAlertDays}</td>
 
                 <td>
+  <button type="button" onClick={() => setViewingProduct(product)}>Details</button>
   <button
     onClick={() => {
       setEditingProduct(product)
@@ -437,6 +439,19 @@ const filteredProducts = products.filter((product) =>
         </table>
 
       </div>
+
+      {viewingProduct && <div className="bill-modal-overlay" role="presentation" onClick={() => setViewingProduct(null)}>
+        <section className="bill-modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-heading" onClick={(event) => event.stopPropagation()}>
+          <div className="bill-modal-header"><div><h2 id="product-detail-heading">{viewingProduct.name}</h2><p>Product details</p></div><button className="close-bill-button" aria-label="Close product details" onClick={() => setViewingProduct(null)}>×</button></div>
+          <div className="bill-details-info">
+            <p><strong>Category:</strong> {viewingProduct.category?.name || 'Not recorded'}</p>
+            <p><strong>Added by:</strong> {viewingProduct.createdByName || viewingProduct.createdBy?.name || 'Not recorded'}</p>
+            <p><strong>Date and time added:</strong> {viewingProduct.createdAt ? new Date(viewingProduct.createdAt).toLocaleString() : 'Not recorded'}</p>
+            <p><strong>Last updated by:</strong> {viewingProduct.updatedByName || viewingProduct.updatedBy?.name || 'Not recorded'}</p>
+            <p><strong>Last updated:</strong> {viewingProduct.updatedAt ? new Date(viewingProduct.updatedAt).toLocaleString() : 'Not recorded'}</p>
+          </div>
+        </section>
+      </div>}
 
     </div>
 

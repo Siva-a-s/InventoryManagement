@@ -26,7 +26,7 @@ const getStockTotals = async () => {
         // Expired stock should not count as sellable stock
         $or: [
           { expiryDate: null },
-          { expiryDate: { $gte: now } }
+          { expiryDate: { $gt: now } }
         ]
       }
     },
@@ -60,7 +60,7 @@ const buildLowStock = async () => {
     .select('name category unit reorderLevel barcode')
     .lean();
 
-  return products
+  const lowStockProducts = products
     .map((p) => {
       const currentStock =
         totalMap.get(String(p._id)) || 0;
@@ -69,13 +69,27 @@ const buildLowStock = async () => {
         p,
         currentStock
       };
-    })
-
-    .filter(({ p, currentStock }) => {
+    }).filter(({ p, currentStock }) => {
       return currentStock <= (p.reorderLevel ?? 0);
-    })
+    });
+  const lowProductIds = lowStockProducts.map(({ p }) => p._id);
+  const relevantBatches = lowProductIds.length ? await StockBatch.find({
+    product: { $in: lowProductIds },
+    remainingQuantity: { $gt: 0 },
+    $or: [{ expiryDate: null }, { expiryDate: { $gt: new Date() } }],
+  }).select('product batchNumber remainingQuantity expiryDate').lean() : [];
+  const batchesByProduct = new Map();
+  relevantBatches.forEach((batch) => {
+    const key = String(batch.product);
+    batchesByProduct.set(key, [...(batchesByProduct.get(key) || []), {
+      batchId: batch._id,
+      batchNumber: batch.batchNumber,
+      remainingQuantity: batch.remainingQuantity,
+      expiryDate: batch.expiryDate,
+    }]);
+  });
 
-    .map(({ p, currentStock }) => ({
+  return lowStockProducts.map(({ p, currentStock }) => ({
       type: 'LOW_STOCK',
 
       severity:
@@ -89,12 +103,13 @@ const buildLowStock = async () => {
       unit: p.unit,
 
       currentStock,
+      batches: batchesByProduct.get(String(p._id)) || [],
 
       reorderLevel: p.reorderLevel,
 
       suggestedReorderQty: Math.max(
-        p.reorderLevel * 2 - currentStock,
-        0
+        (Number(p.reorderLevel) || 0) * 2 - currentStock,
+        1
       ),
 
       message:

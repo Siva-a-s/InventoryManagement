@@ -1,9 +1,13 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { requestText } from '../components/notifications'
+import { notify } from '../components/notifications'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './PurchaseOrder.css'
 
 const PurchaseOrder = () => {
+  const location = useLocation()
   const role = localStorage.getItem('role')
   const token = localStorage.getItem('token')
 
@@ -26,6 +30,9 @@ const PurchaseOrder = () => {
 
 const [receivingOrder, setReceivingOrder] = useState(null)
 const [receiveItems, setReceiveItems] = useState([])
+  const receiveFormRef = useRef(null)
+  const receiveHeadingRef = useRef(null)
+  const receiptInFlightRef = useRef(false)
 
   const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`
@@ -77,6 +84,26 @@ const fetchOrders = useCallback(async () => {
     fetchProducts()
   }, [fetchOrders, fetchSuppliers, fetchProducts])
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const productId = params.get('productId')
+    if (!productId || !products.some((productItem) => productItem._id === productId)) return
+    const suggestedQuantity = Math.max(Number.parseInt(params.get('quantity'), 10) || 1, 1)
+    // Apply query-driven form values after products have loaded from the API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setItems([{ product: productId, quantity: String(suggestedQuantity), unitCost: '' }])
+    setSupplier('')
+    setShowForm(true)
+  }, [location.search, products])
+
+  useEffect(() => {
+    if (!receivingOrder) return
+    requestAnimationFrame(() => {
+      receiveFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      receiveHeadingRef.current?.focus({ preventScroll: true })
+    })
+  }, [receivingOrder])
+
   const addItem = () => {
     setItems([
       ...items,
@@ -119,7 +146,7 @@ const fetchOrders = useCallback(async () => {
     e.preventDefault()
 
     if (!supplier) {
-      alert('Please select a supplier')
+      notify('Please select a supplier')
       return
     }
 
@@ -131,7 +158,7 @@ const fetchOrders = useCallback(async () => {
     )
 
     if (validItems.length === 0) {
-      alert('Please add at least one valid product')
+      notify('Please add at least one valid product')
       return
     }
 
@@ -151,14 +178,14 @@ const fetchOrders = useCallback(async () => {
         { headers }
       )
 
-      alert('Purchase order created successfully')
+      notify('Purchase order created successfully')
 
       resetForm()
       fetchOrders()
     } catch (error) {
       console.error(error)
 
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to create purchase order'
       )
@@ -181,22 +208,27 @@ const fetchOrders = useCallback(async () => {
   setReceiveItems(receiveData)
 }
 const confirmReceive = async () => {
+  if (receiptInFlightRef.current) return
+  receiptInFlightRef.current = true
   for (const item of receiveItems) {
     if (
       !item.receivedQuantity ||
       Number(item.receivedQuantity) <= 0
     ) {
-      alert(`Enter a valid received quantity for ${item.productName}`)
+      notify(`Enter a valid received quantity for ${item.productName}`)
+      receiptInFlightRef.current = false
       return
     }
 
     if (!item.batchNumber.trim()) {
-      alert(`Enter batch number for ${item.productName}`)
+      notify(`Enter batch number for ${item.productName}`)
+      receiptInFlightRef.current = false
       return
     }
 
     if (!item.expiryDate) {
-      alert(`Enter expiry date for ${item.productName}`)
+      notify(`Enter expiry date for ${item.productName}`)
+      receiptInFlightRef.current = false
       return
     }
   }
@@ -217,7 +249,7 @@ const confirmReceive = async () => {
       { headers }
     )
 
-    alert('Purchase order received successfully')
+    notify('Purchase order received successfully')
 
     setReceivingOrder(null)
     setReceiveItems([])
@@ -226,12 +258,13 @@ const confirmReceive = async () => {
   } catch (error) {
     console.error(error)
 
-    alert(
+    notify(
       error.response?.data?.message ||
         'Failed to receive purchase order'
     )
   } finally {
     setLoading(false)
+    receiptInFlightRef.current = false
   }
 }
 const updateReceiveItem = (index, field, value) => {
@@ -248,7 +281,7 @@ const cancelReceive = () => {
 }
 
   const handleCancel = async (id) => {
-    const reason = window.prompt(
+    const reason = await requestText(
       'Enter cancellation reason:'
     )
 
@@ -261,13 +294,13 @@ const cancelReceive = () => {
         { headers }
       )
 
-      alert('Purchase order cancelled')
+      notify('Purchase order cancelled')
 
       fetchOrders()
     } catch (error) {
       console.error(error)
 
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to cancel purchase order'
       )
@@ -537,12 +570,12 @@ const cancelledOrders = orderList.filter(
           </form>
         )}
 {receivingOrder && (
-  <div className="receive-form">
+  <div className="receive-form" ref={receiveFormRef}>
     <div className="receive-form-header">
       <div>
-        <h2>Receive Purchase Order</h2>
+        <h2 ref={receiveHeadingRef} tabIndex="-1">Receive Purchase Order</h2>
         <p>
-          PO #{receivingOrder._id.slice(-6).toUpperCase()}
+          {receivingOrder.poNumber || `PO-${receivingOrder._id.slice(-6).toUpperCase()}`}
         </p>
       </div>
     </div>
@@ -629,6 +662,7 @@ const cancelledOrders = orderList.filter(
         type="button"
         className="secondary-btn"
         onClick={cancelReceive}
+        disabled={loading}
       >
         Cancel
       </button>
@@ -666,8 +700,7 @@ const cancelledOrders = orderList.filter(
 
                   <div>
                     <div className="order-number">
-                      PO #
-                      {order._id.slice(-6).toUpperCase()}
+                      {order.poNumber || `PO-${order._id.slice(-6).toUpperCase()}`}
                     </div>
 
                     <div className="order-date">
@@ -703,6 +736,12 @@ const cancelledOrders = orderList.filter(
                         'Unknown Supplier'}
                     </span>
                   </div>
+
+                  {order.status === 'received' && <div className="info-box">
+                    <span className="info-label">Received by</span>
+                    <span className="info-value">{order.receivedByName || order.receivedBy?.name || 'Not recorded'}</span>
+                    <small>{order.receivedAt ? new Date(order.receivedAt).toLocaleString() : 'Date not recorded'}</small>
+                  </div>}
 
                   <div className="info-box">
                     <span className="info-label">
@@ -766,6 +805,7 @@ const cancelledOrders = orderList.filter(
 
                     <button
                       className="receive-btn"
+                      disabled={loading}
                       onClick={() =>
                         handleReceive(order)
                       }

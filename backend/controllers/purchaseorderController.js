@@ -6,9 +6,7 @@ const StockBatch = require('../models/StockBatch');
 const User = require('../models/User');
 const { sendEmail } = require('../services/emailService')
 
-// CREATE PURCHASE ORDER
-// This only creates the order.
-// It does NOT add stock.
+
 exports.createPurchaseOrder = async (req, res) => {
   try {
     const { supplier, items, expectedDate, notes } = req.body;
@@ -113,7 +111,9 @@ exports.getPurchaseOrders = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit)
       .populate('supplier', 'name phone')
-      .populate('items.product', 'name unit');
+      .populate('items.product', 'name unit')
+      .populate('orderedBy', 'name')
+      .populate('receivedBy', 'name');
 
     const count = await PurchaseOrder.countDocuments(filter);
 
@@ -146,7 +146,9 @@ exports.getPurchaseOrder = async (req, res) => {
   try {
     const order = await PurchaseOrder.findById(req.params.id)
       .populate('supplier', 'name phone')
-      .populate('items.product', 'name unit');
+      .populate('items.product', 'name unit')
+      .populate('orderedBy', 'name')
+      .populate('receivedBy', 'name');
 
     if (!order) {
       return res.status(404).json({
@@ -342,6 +344,7 @@ exports.receivePurchaseOrder = async (req, res) => {
             sourceType: 'purchase_order',
             purchaseOrder: order._id,
             receivedBy: req.user._id,
+            receivedByName: req.user.name,
             notes: `Received from purchase order ${order.poNumber}`
           }
         ],
@@ -356,6 +359,7 @@ exports.receivePurchaseOrder = async (req, res) => {
     order.status = 'received';
     order.receivedAt = new Date();
     order.receivedBy = req.user._id;
+    order.receivedByName = req.user.name;
 
     await order.save({ session });
     await order.populate('items.product', 'name unit');

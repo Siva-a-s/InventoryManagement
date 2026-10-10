@@ -1,8 +1,12 @@
+import { notify } from '../components/notifications'
 import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
 import './Alerts.css'
 
 const Alerts = () => {
+  const navigate = useNavigate()
+  const isOwner = localStorage.getItem('role') === 'owner'
   const [lowStock, setLowStock] = useState([])
   const [expiry, setExpiry] = useState([])
   const [summary, setSummary] = useState({})
@@ -26,7 +30,7 @@ const Alerts = () => {
     } catch (error) {
       console.log(error.response?.data)
 
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to load alerts'
       )
@@ -96,10 +100,12 @@ const Alerts = () => {
             <thead>
               <tr>
                 <th>Product</th>
+                <th>Available batches</th>
                 <th>Current Stock</th>
                 <th>Reorder Level</th>
                 <th>Suggested Order</th>
                 <th>Alert</th>
+                <th>Action</th>
               </tr>
             </thead>
 
@@ -109,6 +115,13 @@ const Alerts = () => {
 
                   <td>
                     <strong>{item.name}</strong>
+                  </td>
+
+                  <td className="alert-batch-list">
+                    {item.batches?.length ? item.batches.map((batch) => <div key={batch.batchId}>
+                      <strong>{batch.batchNumber || 'Batch'}</strong>: {batch.remainingQuantity} {item.unit || ''}
+                      {batch.expiryDate && <small>Expires {new Date(batch.expiryDate).toLocaleDateString()}</small>}
+                    </div>) : 'No non-expired stock batches'}
                   </td>
 
                   <td>
@@ -125,11 +138,13 @@ const Alerts = () => {
 
                   <td>
                     <span className="alert-badge warning">
-                      {item.type === 'OUT_OF_STOCK'
+                      {item.currentStock === 0
                         ? 'Out of Stock'
                         : 'Low Stock'}
                     </span>
                   </td>
+
+                  <td><button type="button" className="create-po-shortcut" disabled={!isOwner} title={isOwner ? 'Prefill a new purchase order' : 'Only an owner can create purchase orders'} onClick={() => navigate(`/purchase-orders?productId=${encodeURIComponent(item.productId)}&quantity=${encodeURIComponent(item.suggestedReorderQty || 1)}`)}>Create Purchase Order</button>{!isOwner && <small>Owner access required</small>}</td>
 
                 </tr>
               ))}

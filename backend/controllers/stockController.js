@@ -7,7 +7,7 @@ const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const getUserId = (req) => req.user._id || req.user.id || req.user.userId;
 
 // Validate + build one batch document from request data
-const buildBatch = async (data, userId) => {
+const buildBatch = async (data, userId, userName) => {
   const { product, quantity, expiryDate, purchaseDate, supplier } = data;
 
   if (!isValidId(product)) throw { status: 400, message: 'Invalid product id' };
@@ -46,6 +46,7 @@ return {
   invoiceNumber: data.invoiceNumber,
   notes: data.notes,
   receivedBy: userId,
+  receivedByName: userName,
 
   // This endpoint represents manual stock entry
   sourceType: 'manual',
@@ -72,7 +73,7 @@ const handleError = (res, err) => {
 // @access  Owner, Staff
 exports.addBatch = async (req, res) => {
   try {
-    const data = await buildBatch(req.body, getUserId(req));
+    const data = await buildBatch(req.body, getUserId(req), req.user.name);
     const batch = await StockBatch.create(data);
     await batch.populate('product', 'name barcode unit');
     res.status(201).json({ success: true, data: batch });
@@ -100,9 +101,14 @@ exports.getBatches = async (req, res) => {
 
     if (status === 'active') {
       filter.remainingQuantity = { $gt: 0 };
-      filter.$or = [{ expiryDate: null }, { expiryDate: { $gte: now } }];
+      filter.$or = [{ expiryDate: null }, { expiryDate: { $gt: now } }];
+      const activeProductIds = await Product.distinct('_id', { isActive: { $ne: false } });
+      const eligibleProductIds = product
+        ? activeProductIds.filter((id) => String(id) === String(product))
+        : activeProductIds;
+      filter.product = { $in: eligibleProductIds };
     } else if (status === 'expired') {
-      filter.expiryDate = { $lt: now };
+      filter.expiryDate = { $lte: now };
       filter.remainingQuantity = { $gt: 0 };
     } else if (status === 'depleted') {
       filter.remainingQuantity = 0;
@@ -114,15 +120,16 @@ exports.getBatches = async (req, res) => {
         return res.status(400).json({ success: false, message: 'expiringInDays must be a positive number' });
       }
       const limitDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-      filter.expiryDate = { $gte: now, $lte: limitDate };
+      filter.expiryDate = { $gt: now, $lte: limitDate };
       filter.remainingQuantity = { $gt: 0 };
     }
 
     const [batches, total] = await Promise.all([
       StockBatch.find(filter)
-        .populate('product', 'name barcode unit category')
+        .populate('product', 'name barcode unit category isActive')
         .populate('supplier', 'name')
         .populate('receivedBy', 'name')
+        .populate('purchaseOrder', 'poNumber')
         .sort({ expiryDate: 1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -147,13 +154,32 @@ exports.getStockSummary = async (req, res) => {
     const [rows, totalBatches, products] = await Promise.all([
       StockBatch.aggregate([
         { $match: { remainingQuantity: { $gt: 0 } } },
+        { $lookup: { from: Product.collection.name, localField: 'product', foreignField: '_id', as: 'productDoc' } },
+        { $unwind: { path: '$productDoc', preserveNullAndEmptyArrays: true } },
         {
           $group: {
             _id: null,
+            availableBatches: {
+              $sum: {
+                $cond: [
+                  { $and: [
+                    { $ne: ['$productDoc._id', null] },
+                    { $ne: ['$productDoc.isActive', false] },
+                    { $or: [{ $eq: ['$expiryDate', null] }, { $gt: ['$expiryDate', now] }] },
+                  ] },
+                  1,
+                  0,
+                ],
+              },
+            },
             availableStock: {
               $sum: {
                 $cond: [
-                  { $or: [{ $eq: ['$expiryDate', null] }, { $gte: ['$expiryDate', now] }] },
+                  { $and: [
+                    { $ne: ['$productDoc._id', null] },
+                    { $ne: ['$productDoc.isActive', false] },
+                    { $or: [{ $eq: ['$expiryDate', null] }, { $gt: ['$expiryDate', now] }] },
+                  ] },
                   '$remainingQuantity',
                   0,
                 ],
@@ -162,7 +188,7 @@ exports.getStockSummary = async (req, res) => {
             expiredStock: {
               $sum: {
                 $cond: [
-                  { $and: [{ $ne: ['$expiryDate', null] }, { $lt: ['$expiryDate', now] }] },
+                  { $and: [{ $ne: ['$expiryDate', null] }, { $lte: ['$expiryDate', now] }] },
                   '$remainingQuantity',
                   0,
                 ],
@@ -171,7 +197,11 @@ exports.getStockSummary = async (req, res) => {
             inventoryValue: {
               $sum: {
                 $cond: [
-                  { $or: [{ $eq: ['$expiryDate', null] }, { $gte: ['$expiryDate', now] }] },
+                  { $and: [
+                    { $ne: ['$productDoc._id', null] },
+                    { $ne: ['$productDoc.isActive', false] },
+                    { $or: [{ $eq: ['$expiryDate', null] }, { $gt: ['$expiryDate', now] }] },
+                  ] },
                   { $multiply: ['$remainingQuantity', '$costPrice'] },
                   0,
                 ],
@@ -185,18 +215,19 @@ exports.getStockSummary = async (req, res) => {
     ]);
 
     const stockByProduct = await StockBatch.aggregate([
-      { $match: { remainingQuantity: { $gt: 0 }, $or: [{ expiryDate: null }, { expiryDate: { $gte: now } }] } },
+      { $match: { remainingQuantity: { $gt: 0 }, $or: [{ expiryDate: null }, { expiryDate: { $gt: now } }] } },
       { $group: { _id: '$product', stock: { $sum: '$remainingQuantity' } } },
     ]);
     const stockMap = new Map(stockByProduct.map((row) => [String(row._id), row.stock]));
     const lowStockProducts = products.filter((product) =>
       (stockMap.get(String(product._id)) || 0) <= (product.reorderLevel ?? 0)
     ).length;
-    const summary = rows[0] || { availableStock: 0, expiredStock: 0, inventoryValue: 0 };
+    const summary = rows[0] || { availableBatches: 0, availableStock: 0, expiredStock: 0, inventoryValue: 0 };
 
     res.json({
       success: true,
       totalBatches,
+      availableBatches: summary.availableBatches,
       availableStock: summary.availableStock,
       expiredStock: summary.expiredStock,
       lowStockProducts,
@@ -215,7 +246,7 @@ exports.getProductStock = async (req, res) => {
     const { productId } = req.params;
     if (!isValidId(productId)) return res.status(400).json({ success: false, message: 'Invalid product id' });
 
-    const product = await Product.findById(productId).select('name barcode unit');
+    const product = await Product.findById(productId).select('name barcode unit isActive');
     if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
 
     const now = new Date();
@@ -232,8 +263,10 @@ exports.getProductStock = async (req, res) => {
       return a.expiryDate - b.expiryDate;
     });
 
-    const sellable = batches.filter((b) => !b.expiryDate || b.expiryDate >= now);
-    const expired = batches.filter((b) => b.expiryDate && b.expiryDate < now);
+    const sellable = product.isActive === false
+      ? []
+      : batches.filter((b) => !b.expiryDate || b.expiryDate > now);
+    const expired = batches.filter((b) => b.expiryDate && b.expiryDate <= now);
 
     res.json({
       success: true,

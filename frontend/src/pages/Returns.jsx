@@ -1,4 +1,6 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { notify } from '../components/notifications'
+import { confirmAction } from '../components/notifications'
+import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import './Returns.css'
 
@@ -8,6 +10,10 @@ const Returns = () => {
   const [returnHistory, setReturnHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyError, setHistoryError] = useState('')
+  const [viewingReturn, setViewingReturn] = useState(null)
+  const [writingOffReturn, setWritingOffReturn] = useState(false)
+  const [requestingRefund, setRequestingRefund] = useState(false)
+  const isOwner = localStorage.getItem('role') === 'owner'
 
   const [selectedItems, setSelectedItems] = useState({})
   const [refundMethod, setRefundMethod] = useState('cash')
@@ -29,7 +35,7 @@ const Returns = () => {
 
       setBills(response.data)
     } catch (error) {
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to load bills'
       )
@@ -51,6 +57,7 @@ const Returns = () => {
       )
 
       setReturnHistory(response.data.returns || [])
+      return response.data.returns || []
     } catch (error) {
       setHistoryError(
         error.response?.data?.message || 'Failed to load return history'
@@ -59,6 +66,85 @@ const Returns = () => {
       setHistoryLoading(false)
     }
   }, [token])
+
+  const viewReturn = async (returnId) => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/returns/${returnId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setViewingReturn(response.data)
+    } catch (error) {
+      notify(error.response?.data?.message || 'Could not load return details')
+    }
+  }
+
+  const isEligibleForWastage = (item) => {
+    const allocations = item.originalBatches || []
+    return !item.restocked && !item.wastageWrittenOff && allocations.length > 0 &&
+      allocations.reduce((sum, allocation) => sum + Number(allocation.quantity || 0), 0) === Number(item.quantity) &&
+      allocations.every((allocation) => allocation.batch && Number(allocation.unitCost) > 0)
+  }
+
+  const writeOffReturn = async () => {
+    if (!viewingReturn || writingOffReturn) return
+    setWritingOffReturn(true)
+    const confirmed = await confirmAction(`Write eligible non-restocked items from ${viewingReturn.returnNumber} off as wastage? This will not change sellable stock.`)
+    if (!confirmed) {
+      setWritingOffReturn(false)
+      return
+    }
+    try {
+      const response = await axios.post(`http://localhost:5000/api/returns/${viewingReturn._id}/write-off-wastage`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      notify(`${response.data.message}. ${response.data.writtenOffUnits} units recorded.`, 'success')
+      const [detailResponse] = await Promise.all([
+        axios.get(`http://localhost:5000/api/returns/${viewingReturn._id}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetchReturnHistory(),
+      ])
+      setViewingReturn(detailResponse.data)
+    } catch (error) {
+      notify(error.response?.data?.message || 'Could not write off returned items')
+    } finally {
+      setWritingOffReturn(false)
+    }
+  }
+
+  const requestRazorpayRefund = async () => {
+    if (!viewingReturn || requestingRefund) return
+    setRequestingRefund(true)
+    try {
+      const response = await axios.post(
+        `http://localhost:5000/api/returns/${viewingReturn._id}/razorpay-refund`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const refundStatus = response.data.return?.razorpayRefund?.status
+      notify(response.data.message || 'Refund status updated', refundStatus === 'processed' ? 'success' : refundStatus === 'failed' ? 'error' : 'info')
+      const [detailResponse] = await Promise.all([
+        axios.get(`http://localhost:5000/api/returns/${viewingReturn._id}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetchReturnHistory(),
+      ])
+      setViewingReturn(detailResponse.data)
+    } catch (error) {
+      if (!error.response) {
+        notify('The refund request could not be confirmed. Its status may be uncertain; retry the same return to check safely.', 'warning')
+      } else {
+        notify(error.response.data?.message || 'Could not process the refund', 'error')
+      }
+      try {
+        const [detailResponse] = await Promise.all([
+          axios.get(`http://localhost:5000/api/returns/${viewingReturn._id}`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetchReturnHistory(),
+        ])
+        setViewingReturn(detailResponse.data)
+      } catch {
+        // Keep the current details visible when a refresh also fails.
+      }
+    } finally {
+      setRequestingRefund(false)
+    }
+  }
 
   useEffect(() => {
     // Initial API loading is an external synchronization effect.
@@ -81,7 +167,7 @@ const Returns = () => {
       setBill(response.data)
       setSelectedItems({})
     } catch (error) {
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to load bill'
       )
@@ -109,7 +195,7 @@ const Returns = () => {
       }))
 
     if (items.length === 0) {
-      alert('Select at least one product to return')
+      notify('Select at least one product to return')
       return
     }
 
@@ -129,7 +215,7 @@ const Returns = () => {
         }
       )
 
-      alert(
+      notify(
         `Return processed successfully. Refund: ₹${response.data.return.totalRefund}`
       )
 
@@ -141,7 +227,7 @@ const Returns = () => {
       fetchBills()
       fetchReturnHistory()
     } catch (error) {
-      alert(
+      notify(
         error.response?.data?.message ||
           'Could not process return'
       )
@@ -417,6 +503,9 @@ const Returns = () => {
                 <option value="store_credit">
                   Store Credit
                 </option>
+                <option value="razorpay">
+                  Razorpay
+                </option>
               </select>
             </div>
 
@@ -476,6 +565,8 @@ const Returns = () => {
                   <th>Reason</th>
                   <th>Refund</th>
                   <th>Restocked</th>
+                  <th>Processed by</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -495,6 +586,8 @@ const Returns = () => {
                           {item.restocked ? 'Yes' : 'No'}
                         </span>
                       </td>
+                      <td>{record.processedByName || record.processedBy?.name || 'Not recorded'}</td>
+                      <td><button className="select-bill-button" onClick={() => viewReturn(record._id)}>View</button></td>
                     </tr>
                   ))
                 )}
@@ -503,6 +596,45 @@ const Returns = () => {
           </div>
         )}
       </div>
+
+      {viewingReturn && <div className="return-detail-overlay" role="presentation" onClick={() => setViewingReturn(null)}>
+        <section className="return-detail-panel" role="dialog" aria-modal="true" aria-labelledby="return-detail-title" onClick={(event) => event.stopPropagation()}>
+          <header className="return-detail-header"><div><h2 id="return-detail-title">Return {viewingReturn.returnNumber || 'Details'}</h2><p>Original bill: {viewingReturn.bill?.billNumber || 'Not recorded'}</p></div><button type="button" aria-label="Close return details" onClick={() => setViewingReturn(null)}>×</button></header>
+          <div className="return-detail-meta">
+            <p><strong>Processed by:</strong> {viewingReturn.processedByName || viewingReturn.processedBy?.name || 'Not recorded'}</p>
+            <p><strong>Date and time:</strong> {viewingReturn.createdAt ? new Date(viewingReturn.createdAt).toLocaleString() : 'Not recorded'}</p>
+            <p><strong>Refund method:</strong> {viewingReturn.refundMethod || 'Not recorded'}</p>
+            <p><strong>Total refund:</strong> INR {Number(viewingReturn.totalRefund || 0).toLocaleString('en-IN')}</p>
+            {viewingReturn.note && <p><strong>Note:</strong> {viewingReturn.note}</p>}
+            {viewingReturn.razorpayRefund && <>
+              <p><strong>Razorpay refund amount:</strong> INR {(Number(viewingReturn.razorpayRefund.amount || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p><strong>Razorpay refund status:</strong> {viewingReturn.razorpayRefund.status}</p>
+              {viewingReturn.razorpayRefund.status === 'pending' && <p>Refund processing is pending. Use the same action to check again; it reuses the original request safely.</p>}
+              {viewingReturn.razorpayRefund.status === 'failed' && <p className="return-wastage-note">Razorpay reports this refund failed. Review it in the Razorpay dashboard before taking further action.</p>}
+              {viewingReturn.razorpayRefund.refundId && <p><strong>Razorpay reference:</strong> {viewingReturn.razorpayRefund.refundId}</p>}
+              {viewingReturn.razorpayRefund.updatedAt && <p><strong>Refund updated:</strong> {new Date(viewingReturn.razorpayRefund.updatedAt).toLocaleString()}</p>}
+            </>}
+          </div>
+          <div className="return-detail-items">{viewingReturn.items?.map((item, index) => <article key={`${item.product?._id || item.product}-${index}`}>
+            <h3>{item.name || item.product?.name || 'Product details unavailable'}</h3>
+            <p><strong>Product:</strong> {item.name || item.product?.name || 'Product details unavailable'}</p>
+            <p><strong>Returned quantity:</strong> {item.quantity} {item.product?.unit || ''}</p>
+            <p><strong>Reason:</strong> {(item.reason || 'other').replaceAll('_', ' ')}</p>
+            <p><strong>Refund:</strong> INR {Number(item.refundAmount || 0).toLocaleString('en-IN')}</p>
+            <p><strong>Restocked:</strong> {item.restocked ? 'Yes' : 'No'}</p>
+            <p><strong>Original batches:</strong> {(item.originalBatches || []).length ? item.originalBatches.map((allocation) => `${allocation.batch?.batchNumber || 'Batch'} (${allocation.quantity}; cost ${allocation.unitCost ?? 'N/A'})`).join(', ') : 'N/A'}</p>
+            {item.wastageWrittenOff && <p><strong>Wastage recorded:</strong> {item.wastageWrittenOffAt ? new Date(item.wastageWrittenOffAt).toLocaleString() : 'Yes'} by {item.wastageWrittenOffBy?.name || 'Not recorded'}</p>}
+            {!item.restocked && !item.wastageWrittenOff && (isEligibleForWastage(item) ? null : <p className="return-wastage-note">Wastage write-off is unavailable because original batch or positive cost data was not recorded.</p>)}
+          </article>)}</div>
+          {isOwner && viewingReturn.refundMethod === 'razorpay' &&
+            viewingReturn.bill?.status === 'completed' && viewingReturn.bill?.paymentMethod === 'razorpay' &&
+            viewingReturn.razorpayRefund?.status !== 'processed' && viewingReturn.razorpayRefund?.status !== 'failed' &&
+            <button type="button" className="process-return" onClick={requestRazorpayRefund} disabled={requestingRefund}>
+              {requestingRefund ? 'Checking refund status...' : viewingReturn.razorpayRefund ? 'Retry / check Razorpay refund' : 'Initiate Razorpay refund'}
+            </button>}
+          {isOwner && viewingReturn.items?.some(isEligibleForWastage) && <button type="button" className="process-return" onClick={writeOffReturn} disabled={writingOffReturn}>{writingOffReturn ? 'Recording wastage...' : 'Record eligible items as wastage'}</button>}
+        </section>
+      </div>}
 
     </div>
   )

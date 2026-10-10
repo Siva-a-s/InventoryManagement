@@ -1,4 +1,6 @@
-﻿import { useEffect, useState } from 'react'
+import { confirmAction } from '../components/notifications'
+import { notify } from '../components/notifications'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Categories.css'
@@ -52,7 +54,7 @@ const Categories = () => {
   }
 
   useEffect(() => {
-    // These async loaders update state after their API requests complete.
+    // Fetchers update state only after their network requests complete.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCategories()
     fetchCategorySummary()
@@ -74,7 +76,7 @@ const Categories = () => {
         }
       )
 
-      alert('Category added successfully')
+      notify('Category added successfully')
 
       setName('')
 
@@ -83,7 +85,7 @@ const Categories = () => {
     } catch (error) {
       console.error('Error adding category:', error)
 
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to add category'
       )
@@ -91,7 +93,7 @@ const Categories = () => {
   }
 
   const handleDeleteCategory = async (categoryId) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       'Are you sure you want to delete this category?'
     )
 
@@ -109,14 +111,14 @@ const Categories = () => {
         }
       )
 
-      alert('Category deleted successfully')
+      notify('Category deleted successfully')
 
       fetchCategories()
       fetchCategorySummary()
     } catch (error) {
       console.error('Error deleting category:', error)
 
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to delete category'
       )

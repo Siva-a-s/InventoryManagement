@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { notify } from '../components/notifications'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import './Reports.css'
 
@@ -136,7 +137,7 @@ setSupplierPurchases(
       error.response?.data || error.message
     )
 
-    alert(
+    notify(
       error.response?.data?.message ||
       'Failed to load reports'
     )
@@ -185,7 +186,6 @@ useEffect(() => {
   const wastedUnits = selectedSummary?.wastedUnits || 0
   const refundCount = selectedSummary?.refundCount || 0
 
-  console.log('SALES TREND:', salesTrend)
 
   return (
     <div className="reports-page">

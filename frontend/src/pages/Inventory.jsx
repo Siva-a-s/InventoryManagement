@@ -1,4 +1,6 @@
-﻿import { useEffect, useState } from 'react'
+import { confirmAction } from '../components/notifications'
+import { notify } from '../components/notifications'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import Layout from '../components/Layout'
 import './Inventory.css'
@@ -7,6 +9,12 @@ const Inventory = () => {
   const [batches, setBatches] = useState([])
   const [products, setProducts] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  const [historyExpanded, setHistoryExpanded] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [wastageEntries, setWastageEntries] = useState([])
+  const [historyProduct, setHistoryProduct] = useState('')
+  const [historyType, setHistoryType] = useState('all')
+  const [historyDate, setHistoryDate] = useState('')
 
   const [showForm, setShowForm] = useState(false)
 
@@ -56,7 +64,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
         page += 1
       } while (page <= pages)
 
-      setBatches(allBatches)
+      setBatches([...new Map(allBatches.map((batch) => [String(batch._id), batch])).values()])
     } catch (error) {
       console.error('Error fetching stock:', error)
     }
@@ -97,6 +105,38 @@ const [expiryFilter, setExpiryFilter] = useState('all')
       setSuppliers(response.data)
     } catch (error) {
       console.error('Error fetching suppliers:', error)
+    }
+  }
+
+  const toggleHistory = async () => {
+    if (historyExpanded) {
+      setHistoryExpanded(false)
+      return
+    }
+    setHistoryExpanded(true)
+    if (historyLoaded) return
+
+    try {
+      const token = localStorage.getItem('token')
+      if (role === 'owner') {
+        const entries = []
+        let page = 1
+        let pages = 1
+        do {
+          const response = await axios.get('http://localhost:5000/api/wastage', {
+            params: { page, limit: 100 },
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          entries.push(...(response.data.entries || []))
+          pages = response.data.pages || 1
+          page += 1
+        } while (page <= pages)
+        setWastageEntries(entries)
+      }
+      setHistoryLoaded(true)
+    } catch (error) {
+      console.error('Error fetching inventory history:', error)
+      notify(error.response?.data?.message || 'Failed to load inventory history')
     }
   }
 
@@ -148,13 +188,13 @@ const [expiryFilter, setExpiryFilter] = useState('all')
         }
       )
 
-      alert('Stock added successfully')
+      notify('Stock added successfully')
 
       resetForm()
       fetchBatches()
     } catch (error) {
       console.error('Error adding stock:', error)
-      alert(error.response?.data?.message || 'Failed to add stock')
+      notify(error.response?.data?.message || 'Failed to add stock')
     }
   }
 
@@ -199,13 +239,13 @@ const [expiryFilter, setExpiryFilter] = useState('all')
         }
       )
 
-      alert('Stock batch updated successfully')
+      notify('Stock batch updated successfully')
 
       setEditingBatch(null)
       fetchBatches()
     } catch (error) {
       console.error('Error updating stock:', error)
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to update stock batch'
       )
@@ -214,7 +254,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 
   // Delete stock batch
   const handleDelete = async (batchId) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       'Are you sure you want to delete this stock batch?'
     )
 
@@ -232,12 +272,12 @@ const [expiryFilter, setExpiryFilter] = useState('all')
         }
       )
 
-      alert('Stock batch deleted successfully')
+      notify('Stock batch deleted successfully')
 
       fetchBatches()
     } catch (error) {
       console.error('Error deleting stock:', error)
-      alert(
+      notify(
         error.response?.data?.message ||
         'Failed to delete stock batch'
       )
@@ -245,18 +285,18 @@ const [expiryFilter, setExpiryFilter] = useState('all')
   }
 
   // Summary values
+  const availableBatches = batches.filter((batch) =>
+    Number(batch.remainingQuantity || 0) > 0 &&
+    batch.product && batch.product.isActive !== false &&
+    (!batch.expiryDate || new Date(batch.expiryDate) > new Date())
+  )
   const totalBatches = batches.length
-
-  const totalAvailable = batches.reduce(
-    (total, batch) => total + (
-      batch.expiryDate && new Date(batch.expiryDate) < new Date()
-        ? 0
-        : Number(batch.remainingQuantity || 0)
-    ),
-    0
+  const availableBatchCount = new Set(availableBatches.map((batch) => String(batch._id))).size
+  const totalAvailable = availableBatches.reduce(
+    (total, batch) => total + Number(batch.remainingQuantity || 0), 0
   )
 
-  const lowStockBatches = batches.filter(
+  const lowStockBatches = availableBatches.filter(
     (batch) =>
       Number(batch.remainingQuantity || 0) <= 10
   ).length
@@ -268,7 +308,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
       new Date(batch.expiryDate) < new Date()
   ).length
 
-  const filteredBatches = batches.filter((batch) => {
+  const filteredBatches = availableBatches.filter((batch) => {
 
   const productName = batch.product?.name?.toLowerCase() || ''
 
@@ -279,16 +319,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
     !selectedSupplier ||
     batch.supplier?._id === selectedSupplier
 
-  const matchesStatus =
-    stockStatus === 'all' ||
-    (stockStatus === 'available' && batch.remainingQuantity > 0 && (!batch.expiryDate || new Date(batch.expiryDate) >= new Date())) ||
-    (stockStatus === 'depleted' && batch.remainingQuantity === 0) ||
-    (
-      stockStatus === 'expired' &&
-      batch.remainingQuantity > 0 &&
-      batch.expiryDate &&
-      new Date(batch.expiryDate) < new Date()
-    )
+  const matchesStatus = stockStatus === 'all' || stockStatus === 'available'
 
   const matchesExpiry =
     expiryFilter === 'all' ||
@@ -307,6 +338,52 @@ const [expiryFilter, setExpiryFilter] = useState('all')
     matchesExpiry
   )
 })
+
+  const historyEvents = [
+    ...batches.map((batch) => ({
+      id: `batch-${batch._id}`,
+      date: batch.createdAt,
+      product: batch.product?.name || 'Product details unavailable',
+      productId: batch.product?._id || '',
+      batchNumber: batch.batchNumber || 'Not recorded',
+      type: batch.sourceType === 'purchase_order' ? 'purchase_order' : 'manual',
+      typeLabel: batch.sourceType === 'purchase_order' ? 'Purchase order receipt' : 'Manual stock addition',
+      quantity: batch.quantity,
+      remaining: batch.remainingQuantity,
+      expiry: batch.expiryDate,
+      supplier: batch.supplier?.name || 'Not recorded',
+      reference: batch.sourceType === 'purchase_order'
+        ? batch.purchaseOrder?.poNumber || 'Purchase order reference unavailable'
+        : batch.invoiceNumber || '—',
+      staff: batch.receivedByName || batch.receivedBy?.name || 'Not recorded',
+      awaitingWriteoff: Number(batch.remainingQuantity || 0) > 0 && batch.expiryDate && new Date(batch.expiryDate) < new Date(),
+      expiredWriteoffRecorded: wastageEntries.some((entry) =>
+        String(entry.batch?._id || entry.batch) === String(batch._id) &&
+        (entry.sourceType === 'expired' || entry.reason === 'expired')
+      )
+    })),
+    ...wastageEntries.map((entry) => ({
+      id: `wastage-${entry._id}`,
+      date: entry.createdAt,
+      product: entry.product?.name || 'Product details unavailable',
+      productId: entry.product?._id || '',
+      batchNumber: entry.batch?.batchNumber || 'Not recorded',
+      type: entry.sourceType === 'manual' ? 'wastage' : entry.sourceType || 'wastage',
+      typeLabel: entry.sourceType === 'return' ? 'Return write-off' : entry.sourceType === 'expired' ? 'Expired stock write-off' : 'Manual write-off',
+      quantity: entry.quantity,
+      remaining: null,
+      expiry: entry.batch?.expiryDate,
+      supplier: '—',
+      reference: entry.sourceReturn?.returnNumber || entry.reason || '—',
+      staff: entry.recordedByName || entry.recordedBy?.name || 'Not recorded',
+      awaitingWriteoff: false
+    }))
+  ].filter((event) => {
+    const eventDay = event.date ? new Date(event.date).toLocaleDateString('en-CA') : ''
+    return (!historyProduct || event.productId === historyProduct) &&
+      (historyType === 'all' || event.type === historyType) &&
+      (!historyDate || eventDay === historyDate)
+  }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
 
   return (
     <Layout>
@@ -337,6 +414,16 @@ const [expiryFilter, setExpiryFilter] = useState('all')
         {/* Summary Cards */}
 
         <div className="inventory-summary">
+
+          <div className="inventory-card">
+            <span className="inventory-card-label">
+              Available Batches
+            </span>
+
+            <strong>
+              {availableBatchCount}
+            </strong>
+          </div>
 
           <div className="inventory-card">
             <span className="inventory-card-label">
@@ -717,10 +804,8 @@ const [expiryFilter, setExpiryFilter] = useState('all')
     value={stockStatus}
     onChange={(e) => setStockStatus(e.target.value)}
   >
-    <option value="all">All Stock</option>
+    <option value="all">All Available Stock</option>
     <option value="available">Available</option>
-    <option value="depleted">Depleted</option>
-    <option value="expired">Expired</option>
   </select>
 
   <select
@@ -747,6 +832,7 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 <th>Cost Price</th>
 <th>Supplier</th>
 <th>Received</th>
+<th>Added by</th>
 <th>Expiry</th>
 
                   {role === 'owner' && (
@@ -757,13 +843,13 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 
               <tbody>
 
-                {batches.length === 0 ? (
+                {filteredBatches.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={role === 'owner' ? '8' : '7'}
+                      colSpan={role === 'owner' ? '10' : '9'}
                       className="empty-stock"
                     >
-                      No stock batches found
+                      No currently sellable stock batches found
                     </td>
                   </tr>
                 ) : (
@@ -818,9 +904,14 @@ const [expiryFilter, setExpiryFilter] = useState('all')
 </td>
 
 <td>
-  {batch.purchaseDate
-    ? new Date(batch.purchaseDate).toLocaleDateString()
+  {batch.createdAt
+    ? new Date(batch.createdAt).toLocaleString()
     : '-'}
+</td>
+
+<td>
+  <div>{batch.receivedByName || batch.receivedBy?.name || 'Not recorded'}</div>
+  <small>{batch.sourceType === 'purchase_order' ? 'Purchase order' : 'Manual stock'}</small>
 </td>
 
 <td>
@@ -871,6 +962,56 @@ const [expiryFilter, setExpiryFilter] = useState('all')
           </div>
 
         </div>
+
+        <section className="stock-section inventory-history-section">
+          <div className="stock-section-header inventory-history-header">
+            <div>
+              <h2>Inventory History</h2>
+              <p>Receipt and write-off quantities are transaction amounts; current remaining quantity is today’s batch balance, not the balance at that transaction time. Sales movements and historical balances are not stored as a complete ledger.</p>
+            </div>
+            <button type="button" className="history-toggle-btn" onClick={toggleHistory}>
+              {historyExpanded ? 'Hide History' : 'View History'}
+            </button>
+          </div>
+          {historyExpanded && <div className="inventory-history-content">
+            <div className="inventory-filters history-filters">
+              <select value={historyProduct} onChange={(event) => setHistoryProduct(event.target.value)}>
+                <option value="">All Products</option>
+                {products.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+              </select>
+              <select value={historyType} onChange={(event) => setHistoryType(event.target.value)}>
+                <option value="all">All transaction types</option>
+                <option value="manual">Manual additions</option>
+                <option value="purchase_order">Purchase order receipts</option>
+                {role === 'owner' && <>
+                  <option value="expired">Expired write-offs</option>
+                  <option value="return">Return write-offs</option>
+                </>}
+                {role === 'owner' && <option value="wastage">Manual write-offs</option>}
+              </select>
+              <input type="date" aria-label="Filter history by date" value={historyDate} onChange={(event) => setHistoryDate(event.target.value)} />
+            </div>
+            <div className="stock-table-wrapper">
+              <table className="stock-table inventory-history-table">
+                <thead><tr><th>Date and time</th><th>Product</th><th>Batch</th><th>Transaction</th><th>Transaction quantity</th><th>Current remaining quantity</th><th>Expiry / status</th><th>Supplier / reference</th><th>Recorded by</th></tr></thead>
+                <tbody>
+                  {!historyLoaded ? <tr><td colSpan="9" className="empty-stock">Loading recorded history…</td></tr> : historyEvents.length === 0 ? <tr><td colSpan="9" className="empty-stock">No recorded transactions match these filters</td></tr> : historyEvents.map((event) => <tr key={event.id}>
+                    <td>{event.date ? new Date(event.date).toLocaleString() : 'Not recorded'}</td>
+                    <td>{event.product}</td>
+                    <td>{event.batchNumber}</td>
+                    <td>{event.typeLabel}</td>
+                    <td>{event.type === 'manual' || event.type === 'purchase_order' ? `+${event.quantity}` : `−${event.quantity}`}</td>
+                    <td>{event.remaining ?? 'Not recorded at transaction time'}</td>
+                    <td>{event.awaitingWriteoff ? 'Expired — awaiting write-off' : event.expiredWriteoffRecorded ? 'Expired — formally written off' : event.expiry ? new Date(event.expiry).toLocaleDateString() : 'No expiry recorded'}</td>
+                    <td>{event.supplier}{event.reference !== '—' ? ` · ${event.reference}` : ''}</td>
+                    <td>{event.staff}</td>
+                  </tr>)}
+                </tbody>
+              </table>
+            </div>
+            {role !== 'owner' && <p className="history-permission-note">Recorded write-off history is available to owners only.</p>}
+          </div>}
+        </section>
 
       </div>
 

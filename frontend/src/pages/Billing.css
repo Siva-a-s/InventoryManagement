@@ -129,6 +129,47 @@
   background: #15803d;
 }
 
+.generate-button:disabled,
+.billing-form button:disabled,
+.billing-form select:disabled,
+.billing-form input:disabled,
+.cart-table button:disabled,
+.customer-form input:disabled,
+.payment-form select:disabled,
+.payment-form input:disabled,
+.payment-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.billing-payment-notice {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.billing-payment-notice p {
+  margin: 0 0 10px;
+}
+
+.billing-payment-notice.pending {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.billing-payment-notice.uncertain,
+.billing-payment-notice.unresolved,
+.billing-payment-notice.error {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.billing-payment-notice .billing-button {
+  background: #166534;
+}
+
 .empty-cart {
   color: #6b7280;
   padding: 20px 0;
@@ -315,3 +356,21 @@
   font-size: 18px;
   font-weight: 700;
 }
+.invoice-modal { width: min(920px, 100%); }
+.invoice-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 15px; color: #637483; }
+.invoice-toolbar .billing-button { flex: 0 0 auto; }
+.invoice-thank-you { margin: 30px 0 0; padding-top: 15px; border-top: 1px solid #e5ebee; text-align: center; }
+.invoice-offer-name { display: block; color: #637483; font-size: 11px; }
+.bill-details-table { table-layout: auto; }
+.invoice-table-scroll { max-width: 100%; overflow-x: auto; }
+.bill-details-table th:nth-child(n+5), .bill-details-table td:nth-child(n+5) { text-align: right; }
+@media print {
+  body * { visibility: hidden !important; }
+  .invoice-modal, .invoice-modal * { visibility: visible !important; }
+  .bill-modal-overlay { position: static; display: block; padding: 0; background: white; }
+  .invoice-modal { width: 100%; max-width: none; max-height: none; overflow: visible; padding: 0; box-shadow: none; }
+  .invoice-toolbar, .close-bill-button { display: none !important; }
+  .bill-details-table thead { display: table-header-group; }
+  .bill-details-table tr { break-inside: avoid; }
+}
+@media (max-width: 650px) { .invoice-toolbar { align-items: stretch; flex-direction: column; } .invoice-modal { padding: 16px; } }

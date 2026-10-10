@@ -94,6 +94,150 @@
   border-radius: 6px;
 }
 
+.wastage-batch-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wastage-batch-dropdown {
+  position: relative;
+  min-width: 0;
+  z-index: 5;
+}
+
+.wastage-batch-trigger {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wastage-batch-trigger:focus-visible,
+.wastage-batch-search:focus-visible,
+.wastage-batch-option:focus-visible {
+  outline: 2px solid #16a34a;
+  outline-offset: 2px;
+}
+
+.wastage-batch-selected {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wastage-batch-selected strong,
+.wastage-batch-selected span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wastage-batch-placeholder {
+  color: #6b7280;
+}
+
+.wastage-batch-chevron {
+  flex: 0 0 auto;
+  color: #166534;
+}
+
+.wastage-batch-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  min-width: min(360px, 90vw);
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.wastage-form .wastage-batch-search {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.wastage-batch-options {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wastage-batch-option {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #1f2937;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wastage-batch-option:hover,
+.wastage-batch-option.is-active {
+  background: #f0fdf4;
+}
+
+.wastage-batch-option.is-selected {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.wastage-batch-option-primary,
+.wastage-batch-option-secondary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wastage-batch-option-primary strong,
+.wastage-batch-option-secondary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wastage-batch-option-primary > span,
+.wastage-batch-option-secondary {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.wastage-batch-option-primary > span,
+.wastage-batch-option-secondary > span:last-child {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.wastage-batch-empty {
+  margin: 0;
+  padding: 12px 10px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
 .record-button {
   padding: 10px 16px;
   border: none;
@@ -113,6 +257,11 @@
   border-collapse: collapse;
   margin-top: 15px;
 }
+.wastage-table-scroll { width: 100%; overflow-x: auto; }
+.wastage-table { min-width: 900px; }
+.expired-review-card { margin: 18px 0; }
+.expired-review-card p { line-height: 1.5; }
+.expired-button:disabled { opacity: .55; cursor: not-allowed; }
 
 .wastage-table th,
 .wastage-table td {

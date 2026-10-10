@@ -1,3 +1,5 @@
+import { confirmAction } from '../components/notifications'
+import { notify } from '../components/notifications'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import './Staff.css'
@@ -28,7 +30,7 @@ const Staff = () => {
       setStaff(response.data || [])
     } catch (error) {
       console.log(error.response?.data)
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to load staff'
       )
@@ -60,7 +62,7 @@ const Staff = () => {
         { headers }
       )
 
-      alert('Staff added successfully')
+      notify('Staff added successfully')
 
       setForm({
         name: '',
@@ -70,7 +72,7 @@ const Staff = () => {
 
       fetchStaff()
     } catch (error) {
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to add staff'
       )
@@ -78,7 +80,7 @@ const Staff = () => {
   }
 
   const deleteStaff = async (id) => {
-    const confirmDelete = window.confirm(
+    const confirmDelete = await confirmAction(
       'Are you sure you want to remove this staff member?'
     )
 
@@ -90,11 +92,11 @@ const Staff = () => {
         { headers }
       )
 
-      alert(response.data.message || 'Staff removed successfully')
+      notify(response.data.message || 'Staff removed successfully')
 
       fetchStaff()
     } catch (error) {
-      alert(
+      notify(
         error.response?.data?.message ||
           'Failed to remove staff'
       )

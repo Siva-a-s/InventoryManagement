@@ -1,6 +1,32 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { notify } from '../components/notifications'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import './Billing.css'
+import { downloadInvoicePdf } from '../utils/invoicePdf'
+
+let razorpayScriptPromise
+
+const loadRazorpayCheckout = () => {
+  if (window.Razorpay) return Promise.resolve(true)
+  if (razorpayScriptPromise) return razorpayScriptPromise
+
+  razorpayScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.onload = () => {
+      if (window.Razorpay) resolve(true)
+      else reject(new Error('Razorpay Checkout did not initialize'))
+    }
+    script.onerror = () => reject(new Error('Could not load Razorpay Checkout'))
+    document.body.appendChild(script)
+  }).catch((error) => {
+    razorpayScriptPromise = null
+    throw error
+  })
+
+  return razorpayScriptPromise
+}
 
 const Billing = () => {
   const [products, setProducts] = useState([])
@@ -17,9 +43,26 @@ const [selectedBill, setSelectedBill] = useState(null)
 
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [amountPaid, setAmountPaid] = useState('')
+  const [paymentBusy, setPaymentBusy] = useState(false)
+  const [pendingVerification, setPendingVerification] = useState(null)
+  const [paymentNotice, setPaymentNotice] = useState(null)
+  const paymentLock = useRef(false)
+  const verificationLock = useRef(false)
+  const checkoutHandlerStarted = useRef(false)
+  const billingLocked = paymentBusy || Boolean(pendingVerification)
 
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+
+  const formatCurrency = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value || 0))
+  const handleInvoiceDownload = async () => {
+    try {
+      const filename = await downloadInvoicePdf(selectedBill)
+      notify(`Invoice PDF generated: ${filename}`, 'success')
+    } catch (error) {
+      notify(error.message || 'Could not open the invoice for PDF download', 'error')
+    }
+  }
 
   
 
@@ -38,7 +81,7 @@ const [selectedBill, setSelectedBill] = useState(null)
 
       setProducts(response.data)
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to load products')
+      notify(error.response?.data?.message || 'Failed to load products')
     }
   }, [token])
 
@@ -55,7 +98,7 @@ const [selectedBill, setSelectedBill] = useState(null)
 
     setBills(response.data.bills || response.data.data || response.data)
   } catch (error) {
-    alert(error.response?.data?.message || 'Failed to load bill history')
+    notify(error.response?.data?.message || 'Failed to load bill history')
   }
 }, [token])
 
@@ -79,13 +122,13 @@ const viewBill = async (id) => {
 
     setSelectedBill(response.data.bill || response.data)
   } catch (error) {
-    alert(error.response?.data?.message || 'Failed to load bill details')
+    notify(error.response?.data?.message || 'Failed to load bill details')
   }
 }
 
   const addToCart = () => {
     if (!selectedProduct || quantity < 1) {
-      alert('Select a product and quantity')
+      notify('Select a product and quantity')
       return
     }
 
@@ -111,7 +154,7 @@ const viewBill = async (id) => {
 
   const previewBill = async () => {
     if (cart.length === 0) {
-      alert('Cart is empty')
+      notify('Cart is empty')
       return
     }
 
@@ -134,13 +177,148 @@ const viewBill = async (id) => {
         setAmountPaid(response.data.total)
       }
     } catch (error) {
-      alert(error.response?.data?.message || 'Could not preview bill')
+      notify(error.response?.data?.message || 'Could not preview bill')
+    }
+  }
+
+  const verifyRazorpayPayment = async (verification) => {
+    if (verificationLock.current) return
+    verificationLock.current = true
+    setPaymentBusy(true)
+    setPaymentNotice({ type: 'pending', message: 'Verifying payment with StockFlow…' })
+
+    try {
+      const response = await axios.post(
+        'http://localhost:5000/api/bills/razorpay/verify',
+        {
+          orderId: verification.orderId,
+          paymentId: verification.paymentId,
+          signature: verification.signature,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      const bill = response.data.bill
+      if (!bill?._id || !bill.billNumber) {
+        setPaymentNotice({
+          type: 'unresolved',
+          message: 'StockFlow did not confirm a completed bill. Do not start another payment; retry verification or contact the owner.',
+        })
+        paymentLock.current = false
+        return
+      }
+
+      setPendingVerification(null)
+      setPaymentNotice(null)
+      setCart([])
+      setPreview(null)
+      setAmountPaid('')
+      setCustomerName('')
+      setCustomerPhone('')
+      setPaymentMethod('cash')
+      setSelectedBill(bill)
+      await Promise.all([fetchBills(), fetchProducts()])
+      notify(`Payment confirmed. Bill ${bill.billNumber} generated for ${formatCurrency(bill.total)}.`, 'success')
+    } catch (error) {
+      const apiMessage = error.response?.data?.message || ''
+      const stockPreventedBill = error.response?.status === 409 &&
+        /Not enough stock|Stock changed while billing|bill completion is pending/i.test(apiMessage)
+
+      setPaymentNotice({
+        type: stockPreventedBill ? 'unresolved' : 'uncertain',
+        message: stockPreventedBill
+          ? `Payment was captured, but stock prevented bill completion: ${apiMessage} The bill is not completed. Retry verification after an owner resolves the stock issue, or contact the owner.`
+          : 'StockFlow could not confirm the payment status. Do not start another payment. Retry verification safely or contact the owner.',
+      })
+    } finally {
+      verificationLock.current = false
+      paymentLock.current = false
+      setPaymentBusy(false)
+    }
+  }
+
+  const startRazorpayPayment = async () => {
+    if (paymentLock.current || pendingVerification) return
+    paymentLock.current = true
+    checkoutHandlerStarted.current = false
+    setPaymentBusy(true)
+    setPaymentNotice(null)
+
+    try {
+      await loadRazorpayCheckout()
+      const orderResponse = await axios.post(
+        'http://localhost:5000/api/bills/razorpay/order',
+        {
+          items: cart,
+          customerName,
+          customerPhone,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+      const { orderId, amount, currency, keyId } = orderResponse.data
+
+      if (!orderId || !amount || !currency || !keyId || !window.Razorpay) {
+        throw new Error('The server returned incomplete Razorpay checkout details')
+      }
+
+      const checkout = new window.Razorpay({
+        key: keyId,
+        amount,
+        currency,
+        name: 'StockFlow',
+        description: 'Inventory purchase',
+        order_id: orderId,
+        prefill: {
+          name: customerName,
+          contact: customerPhone,
+        },
+        theme: { color: '#16a34a' },
+        handler: (result) => {
+          checkoutHandlerStarted.current = true
+          const verification = {
+            orderId: result.razorpay_order_id,
+            paymentId: result.razorpay_payment_id,
+            signature: result.razorpay_signature,
+          }
+          setPendingVerification(verification)
+          verifyRazorpayPayment(verification)
+        },
+        modal: {
+          ondismiss: () => {
+            if (!checkoutHandlerStarted.current) {
+              paymentLock.current = false
+              setPaymentBusy(false)
+              notify('Checkout closed. Your cart was kept. If you completed payment but received no confirmation, contact the owner before retrying.', 'error')
+            }
+          },
+        },
+      })
+
+      checkout.on('payment.failed', () => {
+        notify('Razorpay reported that the payment did not complete. Your cart was kept.', 'error')
+      })
+      checkout.open()
+    } catch (error) {
+      paymentLock.current = false
+      setPaymentBusy(false)
+      const message = error.response?.data?.message || 'Could not start Razorpay Checkout. Your cart was kept.'
+      setPaymentNotice({ type: 'error', message })
+      notify(message, 'error')
     }
   }
 
   const createBill = async () => {
+    if (paymentMethod === 'razorpay') {
+      await startRazorpayPayment()
+      return
+    }
+
     if (!preview) {
-      alert('Preview the bill first')
+      notify('Preview the bill first')
       return
     }
 
@@ -148,7 +326,7 @@ const viewBill = async (id) => {
       paymentMethod === 'cash' &&
       Number(amountPaid) < preview.total
     ) {
-      alert('Amount paid is less than total')
+      notify('Amount paid is less than total')
       return
     }
 
@@ -172,7 +350,7 @@ const viewBill = async (id) => {
         }
       )
 
-      alert(`Bill generated: ${response.data.bill.billNumber}`)
+      notify(`Bill generated: ${response.data.bill.billNumber}`)
       fetchBills()
       setCart([])
       setPreview(null)
@@ -181,7 +359,7 @@ const viewBill = async (id) => {
       setCustomerPhone('')
       setPaymentMethod('cash')
     } catch (error) {
-      alert(error.response?.data?.message || 'Could not create bill')
+      notify(error.response?.data?.message || 'Could not create bill')
     }
   }
 
@@ -215,6 +393,7 @@ const viewBill = async (id) => {
             <select
               value={selectedProduct}
               onChange={(e) => setSelectedProduct(e.target.value)}
+              disabled={billingLocked}
             >
               <option value="">Select Product</option>
 
@@ -230,11 +409,13 @@ const viewBill = async (id) => {
               min="1"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
+              disabled={billingLocked}
             />
 
             <button
               className="billing-button"
               onClick={addToCart}
+              disabled={billingLocked}
             >
               Add
             </button>
@@ -273,6 +454,7 @@ const viewBill = async (id) => {
                         <button
                           className="remove-button"
                           onClick={() => removeFromCart(index)}
+                          disabled={billingLocked}
                         >
                           Remove
                         </button>
@@ -288,6 +470,7 @@ const viewBill = async (id) => {
             className="billing-button"
             style={{ marginTop: '15px' }}
             onClick={previewBill}
+            disabled={billingLocked}
           >
             Preview Bill
           </button>
@@ -316,7 +499,7 @@ const viewBill = async (id) => {
                   </span>
 
                   <span>
-                    ₹{item.lineTotal}
+                    {formatCurrency(item.lineTotal)}
                   </span>
                 </div>
               ))}
@@ -346,6 +529,7 @@ const viewBill = async (id) => {
                   onChange={(e) =>
                     setCustomerName(e.target.value)
                   }
+                  disabled={billingLocked}
                 />
 
                 <input
@@ -355,6 +539,7 @@ const viewBill = async (id) => {
                   onChange={(e) =>
                     setCustomerPhone(e.target.value)
                   }
+                  disabled={billingLocked}
                 />
               </div>
 
@@ -366,10 +551,12 @@ const viewBill = async (id) => {
                   onChange={(e) =>
                     setPaymentMethod(e.target.value)
                   }
+                  disabled={billingLocked}
                 >
                   <option value="cash">Cash</option>
                   <option value="upi">UPI</option>
                   <option value="card">Card</option>
+                  <option value="razorpay">Razorpay</option>
                 </select>
 
                 {paymentMethod === 'cash' && (
@@ -381,6 +568,7 @@ const viewBill = async (id) => {
                       onChange={(e) =>
                         setAmountPaid(e.target.value)
                       }
+                      disabled={billingLocked}
                     />
 
                     {amountPaid &&
@@ -400,9 +588,27 @@ const viewBill = async (id) => {
               <button
                 className="generate-button"
                 onClick={createBill}
+                disabled={billingLocked}
               >
-                Generate Bill
+                {paymentBusy
+                  ? (pendingVerification ? 'Verifying Payment…' : 'Opening Razorpay…')
+                  : paymentMethod === 'razorpay' ? 'Pay with Razorpay' : 'Generate Bill'}
               </button>
+
+              {paymentNotice && (
+                <div className={`billing-payment-notice ${paymentNotice.type}`} role="status" aria-live="polite">
+                  <p>{paymentNotice.message}</p>
+                  {pendingVerification && !paymentBusy && (
+                    <button
+                      type="button"
+                      className="billing-button"
+                      onClick={() => verifyRazorpayPayment(pendingVerification)}
+                    >
+                      Retry Payment Verification
+                    </button>
+                  )}
+                </div>
+              )}
 
             </div>
           )}
@@ -503,11 +709,11 @@ const viewBill = async (id) => {
 {selectedBill && (
   <div className="bill-modal-overlay">
 
-    <div className="bill-modal">
+    <div className="bill-modal invoice-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-title">
 
       <div className="bill-modal-header">
         <div>
-          <h2>Bill Details</h2>
+          <h2 id="invoice-title">Retail Invoice</h2>
           <p>
             {selectedBill.billNumber}
           </p>
@@ -515,11 +721,14 @@ const viewBill = async (id) => {
 
         <button
           className="close-bill-button"
+          aria-label="Close invoice details"
           onClick={() => setSelectedBill(null)}
         >
           ×
         </button>
       </div>
+
+      <div className="invoice-toolbar"><span>Saved bill details</span><button type="button" className="billing-button" onClick={handleInvoiceDownload}>Download Invoice (PDF)</button></div>
 
       <div className="bill-details-info">
         <p>
@@ -527,6 +736,9 @@ const viewBill = async (id) => {
           {selectedBill.customerName || 'Walk-in Customer'}
         </p>
 
+        <p>
+          <strong>Cashier:</strong>{' '}{selectedBill.cashierName || selectedBill.cashier?.name || 'Not recorded'}
+        </p>
         <p>
           <strong>Date:</strong>{' '}
           {selectedBill.createdAt
@@ -538,16 +750,21 @@ const viewBill = async (id) => {
           <strong>Payment:</strong>{' '}
           {selectedBill.paymentMethod?.toUpperCase() || '-'}
         </p>
+        <p><strong>Bill status:</strong> {selectedBill.status || 'Not recorded'}</p>
+        <p><strong>Customer contact:</strong> {selectedBill.customerPhone || '—'}</p>
       </div>
 
       <h3>Purchased Items</h3>
 
-      <table className="bill-details-table">
+      <div className="invoice-table-scroll"><table className="bill-details-table">
         <thead>
           <tr>
+            <th>S.No.</th>
             <th>Product</th>
             <th>Qty</th>
+            <th>Unit</th>
             <th>Price</th>
+            <th>Discount</th>
             <th>Total</th>
           </tr>
         </thead>
@@ -555,31 +772,37 @@ const viewBill = async (id) => {
         <tbody>
           {selectedBill.items?.map((item, index) => (
             <tr key={index}>
+              <td>{index + 1}</td>
               <td>{item.name}</td>
               <td>{item.quantity}</td>
-              <td>₹{item.price}</td>
-              <td>₹{item.lineTotal}</td>
+              <td>{item.unit || '—'}</td>
+              <td>{formatCurrency(item.price)}</td>
+              <td>{formatCurrency(item.discountAmount)}{item.offerName && <small className="invoice-offer-name">{item.offerName}</small>}</td>
+              <td>{formatCurrency(item.lineTotal)}</td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
 
       <div className="bill-details-total">
         <div>
           <span>Subtotal</span>
-          <span>₹{selectedBill.subtotal}</span>
+          <span>{formatCurrency(selectedBill.subtotal)}</span>
         </div>
 
         <div>
           <span>Discount</span>
-          <span>₹{selectedBill.discount}</span>
+          <span>{formatCurrency(selectedBill.discount)}</span>
         </div>
 
         <div className="final-total">
           <span>Total</span>
-          <span>₹{selectedBill.total}</span>
+          <span>{formatCurrency(selectedBill.total)}</span>
         </div>
+        <div><span>Amount paid</span><span>{formatCurrency(selectedBill.amountPaid)}</span></div>
+        <div><span>Change given</span><span>{formatCurrency(selectedBill.changeGiven)}</span></div>
       </div>
+      <p className="invoice-thank-you">Thank you for shopping with us.</p>
 
     </div>
 

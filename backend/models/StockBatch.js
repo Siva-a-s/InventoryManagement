@@ -66,6 +66,7 @@ const stockBatchSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    receivedByName: { type: String, trim: true },
     notes: { 
       type: String, 
       trim: true 

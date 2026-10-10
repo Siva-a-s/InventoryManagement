@@ -306,10 +306,25 @@ async function getCompletedReturns(from, to) {
 }
 
 async function getRestockedReturnCogs(returnRecord, returnItem) {
-  if (!returnItem.restocked || !returnItem.restockedBatch || !returnRecord.bill) return 0;
+  if (!returnItem.restocked || !returnRecord.bill) return 0;
   const billItem = returnRecord.bill.items.find((item) =>
     String(item.product) === String(returnItem.product)
   );
+  const recordedAllocations = returnItem.originalBatches || [];
+  if (recordedAllocations.length) {
+    let total = 0;
+    for (const returnedAllocation of recordedAllocations) {
+      const soldAllocation = billItem?.batches?.find((entry) =>
+        String(entry.batch) === String(returnedAllocation.batch)
+      );
+      const unitCost = soldAllocation
+        ? await getHistoricalAllocationCost(soldAllocation)
+        : Number(returnedAllocation.unitCost) || 0;
+      total += Number(returnedAllocation.quantity || 0) * unitCost;
+    }
+    return total;
+  }
+  if (!returnItem.restockedBatch) return 0;
   const allocation = billItem?.batches?.find((entry) =>
     String(entry.batch) === String(returnItem.restockedBatch)
   );
@@ -686,7 +701,7 @@ async function getInventoryHealth() {
   const batches = await StockBatch.find({
     remainingQuantity: { $gt: 0 },
   })
-    .populate('product', 'name reorderLevel expiryAlertDays')
+    .populate('product', 'name reorderLevel expiryAlertDays isActive')
     .lean();
 
   let inventoryValue = 0;
@@ -704,11 +719,13 @@ async function getInventoryHealth() {
 
     if (
       batch.expiryDate &&
-      new Date(batch.expiryDate) < now
+      new Date(batch.expiryDate) <= now
     ) {
       expiredUnits += quantity;
       continue;
     }
+
+    if (!batch.product || batch.product.isActive === false) continue;
 
     inventoryValue += quantity * cost;
     totalUnits += quantity;
@@ -740,7 +757,8 @@ async function getInventoryHealth() {
         (batch) =>
           batch.product?._id?.toString() ===
           product._id.toString() &&
-          (!batch.expiryDate || new Date(batch.expiryDate) >= now)
+          batch.product?.isActive !== false &&
+          (!batch.expiryDate || new Date(batch.expiryDate) > now)
       )
       .reduce(
         (total, batch) =>
